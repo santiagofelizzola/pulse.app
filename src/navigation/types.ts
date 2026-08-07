@@ -10,8 +10,7 @@ export type LineupsStackParamList = {
 }
 
 export type TabParamList = {
-  Home: undefined
-  Create: undefined // no screen — tabPress is intercepted to open the Canvas modal
+  Training: undefined // no screen — tabPress is intercepted to open the Canvas modal
   Library: NavigatorScreenParams<LibraryStackParamList>
   Lineups: NavigatorScreenParams<LineupsStackParamList>
 }

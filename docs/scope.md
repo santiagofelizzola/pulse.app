@@ -52,24 +52,14 @@ These hold regardless of release. They are not features to be traded away.
 2. **Local-first.** Everything works offline and lives on the device. No account, no network required to use the app. Cloud sharing is an *additive* v2 layer, never a prerequisite.
 3. **Content is reusable and coach-owned.** Activities, sessions, and lineups live in a personal on-device library and are reusable. The coach owns their content; it is never held hostage to a login.
 4. **Storage goes through repositories.** Screens never talk to the database directly — they go through a repository layer (see `docs/architecture.md`). This is what lets cloud sharing arrive later without a rewrite.
-5. **Adaptive home.** The home screen meets coaches wherever they are and never penalizes low engagement (see below).
+5. **Simple, direct navigation.** Three tabs, no landing dashboard: **Library**, **Training** (center — opens the canvas directly), **Lineups**. No adaptive home state, no engagement-based content — the app gets out of the way and takes the coach straight to work.
 6. **Content leads, UI disappears.** Premium, minimal, typography-led. (See `docs/design.md`.)
 
 ---
 
-## Adaptive home screen
+## Navigation
 
-The home screen has **five adaptive states** keyed to how much the coach has created — so a brand-new coach and a coach with a full library each see a home that fits them, and the emptier state is never made to feel like a second-class one. States are keyed off simple counts from the repositories (no new data needed) and are additive, not exclusive — each state is a superset of the previous one's content plus one new thing.
-
-| # | State | Trigger | What's shown | Primary CTA |
-|---|---|---|---|---|
-| 1 | **Blank slate** | 0 activities, 0 sessions, 0 lineups | Welcome headline + one short supporting line. No lists, no empty-looking sections. | *Open canvas* — go straight to Canvas modal |
-| 2 | **Building the library** | ≥1 activity, 0 sessions, 0 lineups | Small "Your activities" count/grid preview (up to 4). Forward-looking, not a nag. | *Build a session* — opens Session Builder (secondary: *Set a lineup*) |
-| 3 | **One track active** | ≥1 activity, and (sessions ≥1) XOR (lineups ≥1) | Recent items from whichever track has content — last 2–3 sessions, or last 2–3 lineups, as a small list. | Single nudge toward the *other* track, phrased as an invitation ("Set your first lineup for the weekend"), never as a gap |
-| 4 | **Both tracks active** | ≥1 activity, ≥1 session, ≥1 lineup | Two content surfaces: **Next lineup** (nearest upcoming `matchDate`, if any) as a card, and **Recent sessions** (last 2–3 by `updatedAt`) as a list. | *Create* tab remains the primary action; no single dominant CTA needed here |
-| 5 | **Established library** | ≥10 activities OR ≥5 sessions (tune once real usage data exists) | Same as state 4, plus a **"Continue"** shortcut to the most recently edited item (activity, session, or lineup — whichever has the latest `updatedAt`) and a visible search/filter entry point into Library. | No forced CTA — surfaces utility since the coach already has a habit |
-
-Implementation note: `HomeScreen` reads counts via `activityRepository.list()`, `sessionRepository.list()`, `lineupRepository.list()` (or lightweight `count()` variants if added), plus a query for the nearest future `matchDate` among lineups and the max `updatedAt` across all three tables for the state-5 "Continue" shortcut. All local, no new schema.
+Three tabs: **Library · Training · Lineups**, with Training in the center. Training has no screen of its own — tapping it opens the Canvas full-screen modal directly (see `docs/architecture.md`). There is no Home tab, no landing dashboard, and no adaptive/engagement-based home content. The coach opens the app and is one tap from either drawing a drill, browsing their library, or setting a lineup.
 
 ---
 

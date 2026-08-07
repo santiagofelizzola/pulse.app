@@ -81,8 +81,6 @@ pulse/
 │   │   ├── AppNavigator.tsx     # Bottom tabs
 │   │   └── types.ts            # All route param types
 │   ├── screens/
-│   │   ├── Home/
-│   │   │   └── HomeScreen.tsx
 │   │   ├── Canvas/
 │   │   │   ├── CanvasScreen.tsx
 │   │   │   ├── components/
@@ -138,7 +136,7 @@ pulse/
 └── package.json
 ```
 
-No auth stack, no login/signup screens — the app opens straight to Home.
+No auth stack, no login/signup screens — the app opens straight to the tab bar (Training tab active, no landing dashboard).
 
 ---
 
@@ -149,16 +147,15 @@ RootNavigator (Native Stack)
 │
 ├── AppNavigator (Bottom Tabs)          ← app opens here directly (no auth gate)
 │   │
-│   ├── [Tab] Home
-│   │   └── HomeScreen
-│   │
-│   ├── [Tab] Create                    ← NO screen. Custom tab button
-│   │   └── fires: navigate('Canvas')  ← opens Canvas as full-screen modal
-│   │
 │   ├── [Tab] Library (Stack)
-│   │   ├── LibraryScreen               ← Drills / Sessions tabs
-│   │   ├── SessionBuilderScreen
+│   │   ├── LibraryScreen               ← Drills / Sessions segmented tabs
+│   │   │     • Drills view: saved activities; no create button (activities are made on the Canvas)
+│   │   │     • Sessions view: saved sessions; "+" opens SessionBuilder
+│   │   ├── SessionBuilderScreen        ← create/edit a session from saved activities
 │   │   └── ActivityDetailScreen
+│   │
+│   ├── [Tab] Training                  ← center tab. NO screen. Regular tab item, intercepted on press
+│   │   └── fires: navigate('Canvas')  ← opens Canvas as full-screen modal
 │   │
 │   └── [Tab] Lineups (Stack)
 │       └── LineupsScreen               ← saved lineups; "+" opens LineupEditor
@@ -168,9 +165,12 @@ RootNavigator (Native Stack)
     └── LineupEditorScreen
 ```
 
-**Tabs:** Home · Create · Library · Lineups. (The old **Team** tab is replaced by **Lineups**; teams/rosters are out of scope.)
-**Create tab:** custom `tabBarButton` that calls `navigation.navigate('Canvas')`.
+**Tabs:** Library · Training · Lineups. Three tabs, Training in the center, no Home, no landing dashboard. (The old **Team** tab is replaced by **Lineups**; teams/rosters are out of scope.)
+**Training tab:** has no screen of its own — its `tabPress` listener is intercepted to call `navigation.navigate('Canvas')` and `preventDefault()` on the default tab switch, so it never shows a blank/active tab state, it just opens the modal. Same underlying mechanism the old center Create button used, now applied to a normal tab slot instead of a custom raised button.
 **Lineups:** created via a "+" on `LineupsScreen` that opens `LineupEditorScreen` as a full-screen modal.
+**Library — two sub-views with different create affordances.** The Library screen has a Drills / Sessions segmented toggle. **Drills** lists saved activities and has *no* create button — activities are made on the Canvas (via the Training tab) and appear here once saved; the empty state's "Open canvas" CTA routes to the Canvas. **Sessions** lists saved sessions and *does* have a persistent "+" (in the nav bar's trailing action, matching the Lineups tab), because sessions are born in the `SessionBuilder`, not elsewhere — tapping "+" opens `SessionBuilderScreen` to compose a new session from saved activities. The asymmetry is intentional: a Drills "+" would only bounce to the Canvas (a second door to the same action), whereas Sessions genuinely originate in the builder and so need their own persistent entry point.
+
+**Unsaved-changes guard (Canvas and Lineup editor).** Because both editors are dismissible modals, a swipe-down or back gesture can discard in-progress work with no undo. Both must guard against this: when the editor has unsaved changes, intercept the dismiss (React Navigation `beforeRemove`) and show a confirm prompt ("Discard changes?" — discard / keep editing) before actually closing. With no unsaved changes, dismiss immediately with no prompt. This is a Session 3 concern (it lands with save/undo), but the modal presentation is chosen with this guard as a requirement, not an afterthought — one drill's worth of unsaved marks should never be lost to an accidental swipe.
 
 ---
 
@@ -413,14 +413,14 @@ CREATE TABLE lineups (
 ### Phase 1 — Foundation
 | Session | Deliverable | Done when |
 |---|---|---|
-| 1 | Expo app + navigation shell + SQLite + repository scaffold + `theme.ts` | App runs; 4 tabs work (Home, Create→Canvas modal, Library, Lineups); DB opens, migrations run, empty repositories wired; `src/theme/theme.ts` created verbatim from `design.md` Appendix and imported by at least one screen |
+| 1 | Expo app + navigation shell + SQLite + repository scaffold + `theme.ts` | App runs; 3 tabs work (Library, Training→Canvas modal in center, Lineups); DB opens, migrations run, empty repositories wired; `src/theme/theme.ts` created verbatim from `design.md` Appendix and imported by at least one screen |
 
 ### Phase 2 — Session planner (core loop)
 | Session | Deliverable | Done when |
 |---|---|---|
 | 2 | Canvas: backgrounds + object placement | All 6 backgrounds; all tool-palette items placeable, including per-type equipment objects (Cone, Pole, Ladder, Flag, Disc, Goal/Mini-goal, Ball) |
-| 3 | Canvas: selection + arrows + undo + save | Full interaction; all 4 arrow types; undo/redo; activity saves locally with a thumbnail; appears in Library |
-| 4 | Activity library + Session builder | Grid + tag filter; create session, add/reorder activities, set block type + coaching points — all persisted locally |
+| 3 | Canvas: selection + arrows + undo + save | Full interaction; all 4 arrow types; undo/redo; activity saves locally with a thumbnail; appears in Library; unsaved-changes guard on dismiss (confirm before discarding in-progress marks) |
+| 4 | Activity library + Session builder | Drills grid + tag filter; Sessions view with a persistent "+" that opens the builder; create session, add/reorder activities, set block type + coaching points — all persisted locally |
 
 ### Phase 3 — Lineups
 | Session | Deliverable | Done when |
@@ -430,7 +430,7 @@ CREATE TABLE lineups (
 ### Phase 4 — Export + polish
 | Session | Deliverable | Done when |
 |---|---|---|
-| 6 | Local export + Home states + build | Session/lineup export to PDF/image via share sheet; Home adaptive states wired to real local data; EAS build |
+| 6 | Local export + polish + build | Session/lineup export to PDF/image via share sheet; tab bar and remaining screens polished to design.md spec; EAS build |
 
 ### v2 (later) — Account-based cloud sync
 Introduce the Go/Postgres/R2 backend and real accounts (JWT), give the repositories a cloud read/write path (last-write-wins on `updated_at`), and build a **web app** that renders the same library. Share-by-link rides along as a feature within the synced product. The phone stays local-first and syncs up/down; screens are untouched. Validate the Skia canvas on web early — it's the one component that needs porting.
@@ -463,3 +463,4 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Dribble line treatment | Squiggly/wavy — finalized | Matches common coaching-diagram convention; no further revision planned |
 | Lineup formations | Squad-size-scoped: 3 named formations + custom per size (7v7/9v9/11v11) | Matches real youth match formats instead of only 11-a-side |
 | Session PDF export | Single page up to 6 activities, paginate beyond | Keeps typical sessions readable as one sheet without illegibly compressing long ones |
+| Navigation | 3 tabs (Library · Training · Lineups), Training in center, no Home tab, no adaptive home content, no raised center Create button | Simpler nav surface; Training is the primary action so it sits center (under the thumb, where the old Create button was); Training tab intercepts its own tabPress to open Canvas directly |

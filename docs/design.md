@@ -196,13 +196,13 @@ Layout constants:
 | `radius.lg` | 16 | Cards (default), large containers. |
 | `radius.xl` | 20 | Modals, prominent containers. |
 | `radius.xxl` | 28 | Bottom-sheet top corners. |
-| `radius.pill` | 999 | Filter chips, primary CTA pills, player markers, the Create button. |
+| `radius.pill` | 999 | Filter chips, primary CTA pills, player markers. |
 
 ---
 
 ## 5. Elevation / Shadow
 
-Prefer **hairline borders** over shadows (Monarch). Use shadow only to lift floating elements (sheets, the Create button, the canvas tool palette, selection toolbar). Shadow tokens include iOS keys and Android `elevation`.
+Prefer **hairline borders** over shadows (Monarch). Use shadow only to lift floating elements (sheets, the canvas tool palette, selection toolbar). Shadow tokens include iOS keys and Android `elevation`.
 
 | Token | iOS values | Android |
 |---|---|---|
@@ -316,7 +316,7 @@ Outline alternative (use on white-heavy screens): transparent fill, 1px `colors.
 
 ### Bottom Sheet
 
-Used for the canvas background picker and contextual pickers (e.g. object color, line-type selection). The Create button does **not** open a sheet — it opens the Canvas modal directly.
+Used for the canvas background picker and contextual pickers (e.g. object color, line-type selection). The Training tab does **not** open a sheet — it opens the Canvas modal directly.
 
 | Property | Value |
 |---|---|
@@ -333,7 +333,7 @@ Dismiss on backdrop tap and downward drag. Spring animation (§9).
 
 ### Tab Bar
 
-Four slots: **Home · Create · Library · Lineups**. Create is a custom center button with **no screen of its own** — its `tabBarButton` calls `navigate('Canvas')`, opening the Canvas as a full-screen modal (per `architecture.md`). The **Lineups** tab (formerly Team) lists saved matchday lineups; a "+" on that screen opens the lineup editor as a full-screen modal.
+Three equal-width slots: **Library · Training · Lineups**, with **Training in the center**. No Home tab, no landing dashboard, no raised center button — all three are regular equal-width tab items with the same layout and touch target. **Training** has no screen of its own: its `tabPress` is intercepted (`preventDefault()` + `navigate('Canvas')`), so tapping it opens the Canvas as a full-screen modal instead of switching tabs (per `architecture.md`). Center placement is deliberate — Training is the primary action, and the center slot puts it under the thumb where the old Create button sat. The **Lineups** tab (formerly Team) lists saved matchday lineups; a "+" on that screen opens the lineup editor as a full-screen modal.
 
 | Property | Value |
 |---|---|
@@ -342,11 +342,16 @@ Four slots: **Home · Create · Library · Lineups**. Create is a custom center 
 | Top border | 1px `colors.borderSubtle` |
 | Icon size | 24 |
 | Label | `typography.caption` with `fonts.medium` |
-| Active | icon + label `colors.primary`; consider filled icon variant |
+| Active | icon + label `colors.primary` |
 | Inactive | icon + label `colors.textTertiary` |
-| Item layout | icon over label, `spacing.xxs` gap, centered |
+| Item layout | icon over label, `spacing.xxs` gap, centered, equal-width flex across all three tabs |
 
-**Create button** (center): circular, 56×56, `radius.pill`, fill `colors.primary`, white `+` / whistle icon (24), `shadow.md`, raised ~`spacing.md` above the bar baseline. Press: scale `0.94` + `colors.primaryPressed`. It is **not** a tab — no active state, no label, no screen; it opens the Canvas full-screen modal.
+Icons (from Lucide):
+- **Training** → `soccerBall` (a paneled soccer ball) — from `@lucide/lab`, rendered via `<Icon iconNode={soccerBall} size={24} />`.
+- **Library** → `Folder` — from the main `lucide-react-native` package, rendered via `<Folder size={24} />`.
+- **Lineups** → `soccerPitch` (a soccer field) — from `@lucide/lab`, rendered via `<Icon iconNode={soccerPitch} size={24} />`.
+
+Two of the three (`soccerBall`, `soccerPitch`) live in the separate `@lucide/lab` package, so it must be installed alongside `lucide-react-native`; both use the `Icon iconNode={…}` form rather than a named component. `Folder` is a normal named import. Color follows the active/inactive rows above (`colors.primary` / `colors.textTertiary`) via the `color` prop; since these are stroke icons there is no filled active variant — drop the "consider filled icon variant" note for this tab bar and rely on color alone for the active state.
 
 ### Navigation Bar (top)
 
@@ -451,7 +456,7 @@ The lineup editor is not a separate visual system — it reuses the **pitch back
 
 ## 9. Empty State Patterns
 
-Empty states should feel intentional and inviting, never like an error or a nag (this mirrors the home screen's five adaptive states — a coach with little set up is never a second-class user).
+Empty states should feel intentional and inviting, never like an error or a nag — a coach with little set up is never a second-class user.
 
 **Anatomy**, vertically centered with generous whitespace:
 
@@ -496,15 +501,15 @@ Restraint is the rule. Motion confirms an action or maintains spatial continuity
 | `motion.slow` | 320ms | Sheet present/dismiss, screen-level transitions. |
 | `motion.easeStandard` | `Easing.bezier(0.2, 0, 0, 1)` | Default entrances/exits. |
 | `motion.easeOut` | `Easing.out(Easing.cubic)` | Decelerating reveals. |
-| `motion.spring` | `{ damping: 18, stiffness: 220, mass: 1 }` | Sheets, the selection toolbar, the Create button. |
+| `motion.spring` | `{ damping: 18, stiffness: 220, mass: 1 }` | Sheets, the selection toolbar. |
 
 ### Patterns
 
-- **Press feedback** (buttons, cards, tabs): `scale → 0.98` (0.94 for the Create button) + slight opacity/color shift over `motion.fast`. The single most important micro-interaction — apply it consistently.
+- **Press feedback** (buttons, cards, tabs): `scale → 0.98` + slight opacity/color shift over `motion.fast`. The single most important micro-interaction — apply it consistently.
 - **Bottom sheet**: slide up + backdrop fade using `motion.spring`; dismiss reverses with `motion.slow` easing on the backdrop.
 - **Coaching points expand/collapse**: animate height/layout with `motion.base` + `motion.easeStandard`; chevron rotates 90°. Use `LayoutAnimation` or Reanimated `withTiming` on measured height.
 - **Selection toolbar flip**: when the top-25% rule triggers a reposition, animate the Y translation with `motion.spring` so it glides above/below rather than jumping.
-- **Tab → Create sheet**: the Create button press triggers the sheet present; no screen transition.
+- **Training tab → Canvas**: pressing the Training tab opens the Canvas modal directly (standard modal present transition); no sheet, no intermediate screen.
 - **Empty state / list load**: a single, subtle staggered fade-in (opacity + 8px translateY, `motion.base`, ~40ms stagger) on first mount only. One orchestrated reveal beats scattered micro-animations.
 - **Avoid**: looping animations, parallax, bouncy overshoot on content, anything that draws the eye away from the coach's marks on the canvas.
 

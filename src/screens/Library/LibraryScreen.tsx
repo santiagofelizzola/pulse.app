@@ -1,14 +1,13 @@
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
 
+import { ScreenHeader } from '../../components/ui/ScreenHeader'
 import { navigate } from '../../navigation/rootNavigation'
-import { colors, spacing, typography, layout, radius } from '../../theme/theme'
+import { colors, spacing, typography, radius } from '../../theme/theme'
 
 export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Library</Text>
-      </View>
+      <ScreenHeader title="Library" />
       <View style={styles.emptyState}>
         <Text style={styles.headline}>No activities yet</Text>
         <Text style={styles.supporting}>
@@ -26,14 +25,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    paddingHorizontal: layout.screenPaddingX,
-    paddingBottom: spacing.lg,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.textPrimary,
   },
   emptyState: {
     flex: 1,

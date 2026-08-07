@@ -1,21 +1,16 @@
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
 
+import { HeaderActionButton, ScreenHeader } from '../../components/ui/ScreenHeader'
 import { navigate } from '../../navigation/rootNavigation'
-import { colors, spacing, typography, layout, radius } from '../../theme/theme'
+import { colors, spacing, typography, radius } from '../../theme/theme'
 
 export default function LineupsScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Lineups</Text>
-        <Pressable
-          onPress={() => navigate('LineupEditor')}
-          hitSlop={layout.hitSlop}
-          style={styles.addButton}
-        >
-          <Text style={styles.addLabel}>+</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title="Lineups"
+        trailing={<HeaderActionButton label="+" onPress={() => navigate('LineupEditor')} />}
+      />
       <View style={styles.emptyState}>
         <Text style={styles.headline}>No lineups yet</Text>
         <Text style={styles.supporting}>
@@ -33,27 +28,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPaddingX,
-    paddingBottom: spacing.lg,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.textPrimary,
-  },
-  addButton: {
-    width: layout.touchTarget,
-    height: layout.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addLabel: {
-    ...typography.h2,
-    color: colors.primary,
   },
   emptyState: {
     flex: 1,
