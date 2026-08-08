@@ -19,12 +19,14 @@ export interface PlayerMarker extends BaseCanvasObject {
   teamIndex: 0 | 1
 }
 
-export interface Cone extends BaseCanvasObject { type: 'cone' }
-export interface Ball extends BaseCanvasObject { type: 'ball' }
+export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }
+// `variant` is a Session 2 scaffolding field so the two comparison ball assets render
+// distinctly on canvas. Collapse to a single fixed asset (and drop this field) once one is picked.
+export interface Ball extends BaseCanvasObject { type: 'ball'; variant?: 'bw' | 'color' }
 export interface Pole extends BaseCanvasObject { type: 'pole' }
 export interface Ladder extends BaseCanvasObject { type: 'ladder' }
 export interface Flag extends BaseCanvasObject { type: 'flag' }
-export interface Disc extends BaseCanvasObject { type: 'disc' }
+export interface Disc extends BaseCanvasObject { type: 'disc'; color?: string }
 
 export interface Goal extends BaseCanvasObject {
   type: 'goal' | 'mini-goal'

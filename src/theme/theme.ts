@@ -94,6 +94,7 @@ export const shadow = {
 export const canvas = {
   marker: { diameter: 30, border: 2 },
   equipment: { size: 26 },
+  pitchLine: { width: 2 },
   line: {
     strokeWidth: 2.5,
     doubleGap: 3,

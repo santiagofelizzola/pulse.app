@@ -11,7 +11,7 @@ Pulse is a calm, premium tool for solo youth soccer coaches. The interface shoul
 Three principles govern every decision, drawn from our references:
 
 1. **Content leads, UI disappears** *(Monarch)*. White surfaces, hairline borders over heavy shadows, generous whitespace. Color is an accent, never a wallpaper. A screen at rest should look almost empty.
-2. **The pitch is the canvas** *(SoccerDrive)*. On the drawing canvas the chrome goes dark and recedes; the field and the coach's marks are the only things that matter.
+2. **The pitch is the canvas** *(SoccerDrive)*. On the drawing canvas the floating chrome goes dark and recedes; the field (white, with dark line markings) and the coach's marks are the only things that matter.
 3. **Typography carries hierarchy.** We separate information with size, weight, and space — not boxes, rules, or background fills.
 
 When in doubt: remove the border, add the whitespace, drop the color.
@@ -373,12 +373,12 @@ The canvas uses its **own** dark bar (see §7), not this component.
 
 ## 7. Canvas Design Rules
 
-The canvas is full-screen and full-bleed (`radius.none`). The pitch fills the viewport; chrome floats over it and is dark so the field reads clearly.
+The canvas is full-screen and full-bleed (`radius.none`). The pitch fills the viewport. **The pitch is rendered white (`colors.background`) with dark line markings (`colors.canvasInk`)** — not a green turf fill; keeping the field white keeps the coach's marks and objects maximally legible and the diagram print-friendly. The floating chrome (top bar, tool palette) is still dark and recedes over the white field.
 
 ### Top bar (dark overlay)
 
 - Background `colors.overlayBar`, or a top-down gradient from `rgba(20,22,24,0.72)` → `transparent` for a softer edge.
-- Height 56 + safe-area top inset. Contents: back (left), session/activity title (`typography.h3`, `colors.textInverse`), actions (right: undo/redo, save, share/export).
+- Height 56 + safe-area top inset. Contents: back (left), session/activity title (`typography.h3`, `colors.textInverse`), actions (right: undo/redo, save, share/export). The back action (and the modal's swipe-down dismiss) triggers the unsaved-changes confirm prompt when there are unsaved marks — see the unsaved-changes guard in `architecture.md`.
 - All icons/text `colors.textInverse`, icon size 22, `layout.touchTarget` hit areas.
 
 ### Tool palette (bottom)
@@ -402,11 +402,16 @@ Opens as a bottom sheet (§5) showing the six `CanvasBackground` options — ful
 | Fill | `colors.surface` (white) by default; team color fills are an option |
 | Border | 2px `colors.canvasInk` (or team color) |
 | Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`, `colors.canvasInk`. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
+| Palette presets | The players tool offers three quick options: a plain (blank-label) marker, and two labelled presets — **GK** and **Co** — which simply place a marker with that `label` value. All other labels are entered ad-hoc. No non-circle player shapes (triangle/square/etc. belong to equipment/zones, not markers). |
 | Min touch target | 44 (use transparent hit area padding around the 30px visual) |
 
 ### Equipment icons
 
-Curated set (cone, mini-goal, ball, pole, ladder, flag, marker disc). Render at 26×26 on canvas, monochrome `colors.canvasInk`, consistent visual weight with player markers. Selectable/movable like any object.
+Curated set: cone, mini-goal, ball, pole, ladder, flag, marker disc. Rendered from **vector SVG assets** (in `assets/icons/`, loaded via Skia's SVG support), sized to ~26×26 on canvas with consistent visual weight next to player markers. Selectable/movable like any object.
+
+- **Recolor to the pitch.** The source SVGs were drawn for a green pitch (white/grey fills and white net/marking strokes). On the white pitch those white strokes would disappear, so equipment is recolored to monochrome `colors.canvasInk` on load. The **disc** is drawn as two concentric circles — an outer filled circle in the object color with a smaller white inner circle — rather than a flat ellipse.
+- **Per-object color (cone & disc).** `Cone` and `Disc` each carry an optional `color` field (see `architecture.md`); it defaults to `colors.canvasInk` and is rendered from that field. The **color-editing UI** (picking a new color for a placed cone/disc) is part of the selection toolbar and lands in **Session 3** — Session 2 only adds the data field and renders the default.
+- **Goal & mini-goal** are two distinct SVG assets (a full goal and a narrower mini-goal), not one frame scaled — both recolored to `canvasInk`.
 
 > Each equipment item is its own `PlacedObject` type — `Cone`, `Ball`, `Goal`/`MiniGoal`, `Pole`, `Ladder`, `Flag`, `Disc` — matching the existing per-type pattern (see `architecture.md`). No generic `equipment` + `variant` type: every item gets an explicit interface so `PlacedObject` switches stay exhaustively checked by TypeScript as the set grows.
 

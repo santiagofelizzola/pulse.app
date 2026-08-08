@@ -200,12 +200,12 @@ export interface PlayerMarker extends BaseCanvasObject {
   teamIndex: 0 | 1
 }
 
-export interface Cone extends BaseCanvasObject { type: 'cone' }
+export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }
 export interface Ball extends BaseCanvasObject { type: 'ball' }
 export interface Pole extends BaseCanvasObject { type: 'pole' }
 export interface Ladder extends BaseCanvasObject { type: 'ladder' }
 export interface Flag extends BaseCanvasObject { type: 'flag' }
-export interface Disc extends BaseCanvasObject { type: 'disc' }
+export interface Disc extends BaseCanvasObject { type: 'disc'; color?: string }
 
 export interface Goal extends BaseCanvasObject {
   type: 'goal' | 'mini-goal'
@@ -418,7 +418,7 @@ CREATE TABLE lineups (
 ### Phase 2 — Session planner (core loop)
 | Session | Deliverable | Done when |
 |---|---|---|
-| 2 | Canvas: backgrounds + object placement | All 6 backgrounds; all tool-palette items placeable, including per-type equipment objects (Cone, Pole, Ladder, Flag, Disc, Goal/Mini-goal, Ball) |
+| 2 | Canvas: backgrounds + object placement | All 6 backgrounds (white pitch, dark line markings); all tool-palette items placeable; equipment rendered from the SVG assets in `assets/icons/` recolored to `canvasInk` (Cone, Pole, Ladder, Flag, Disc as concentric circles, Goal + Mini-goal as separate assets, Ball); player tool offers plain + GK + Co presets; placed objects can be **dragged to reposition** (no selection/handles/toolbar yet — those are Session 3); `Cone`/`Disc` carry the optional `color` field (default `canvasInk`; editing UI is Session 3) |
 | 3 | Canvas: selection + arrows + undo + save | Full interaction; all 4 arrow types; undo/redo; activity saves locally with a thumbnail; appears in Library; unsaved-changes guard on dismiss (confirm before discarding in-progress marks) |
 | 4 | Activity library + Session builder | Drills grid + tag filter; Sessions view with a persistent "+" that opens the builder; create session, add/reorder activities, set block type + coaching points — all persisted locally |
 
@@ -464,3 +464,7 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Lineup formations | Squad-size-scoped: 3 named formations + custom per size (7v7/9v9/11v11) | Matches real youth match formats instead of only 11-a-side |
 | Session PDF export | Single page up to 6 activities, paginate beyond | Keeps typical sessions readable as one sheet without illegibly compressing long ones |
 | Navigation | 3 tabs (Library · Training · Lineups), Training in center, no Home tab, no adaptive home content, no raised center Create button | Simpler nav surface; Training is the primary action so it sits center (under the thumb, where the old Create button was); Training tab intercepts its own tabPress to open Canvas directly |
+| Pitch rendering | White fill, dark (`canvasInk`) line markings — not a green turf | Maximum legibility for marks/objects, print-friendly, no new color token needed |
+| Equipment art | Real SVG assets in `assets/icons/`, recolored to `canvasInk` on load; disc as concentric circles; goal & mini-goal as separate assets | Higher fidelity than hand-drawn Skia primitives; source SVGs were green-pitch colored so they're recolored for the white pitch |
+| Per-object color (cone/disc) | Add optional `color` field in Session 2; editing UI in Session 3 with selection | Data model first, UI later — keeps Session 2 to placement while making Session 3's color picker a wiring task |
+| Reposition in Session 2 | Drag-to-move placed objects (no selection box/handles/toolbar) | Placement-refinement so mis-taps are fixable; full selection stays Session 3 |
