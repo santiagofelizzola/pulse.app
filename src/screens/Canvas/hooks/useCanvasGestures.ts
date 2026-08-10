@@ -36,6 +36,11 @@ export function useCanvasGestures({ objects, canvasSize, activeTool, onPlace, on
 
   const pan = Gesture.Pan()
     .maxPointers(1)
+    // Pan gestures don't activate (and therefore never fire onEnd) until the touch moves past
+    // a default distance threshold — a stationary tap never crosses it, so tap-to-place would
+    // silently never fire. minDistance(0) makes the gesture activate immediately on touch-down;
+    // tap vs. drag is still disambiguated ourselves below via TAP_SLOP.
+    .minDistance(0)
     .onBegin((event) => {
       startPoint.value = { x: event.x, y: event.y }
 

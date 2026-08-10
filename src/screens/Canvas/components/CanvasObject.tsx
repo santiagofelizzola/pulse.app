@@ -14,11 +14,6 @@ interface CanvasObjectProps {
 
 const EQUIPMENT_SIZE = canvas.equipment.size
 
-function ConeShape({ color }: { color: string }) {
-  const half = EQUIPMENT_SIZE / 2
-  return <Path path={`M 0 ${-half} L ${half * 0.62} ${half * 0.77} L ${half} ${half * 0.77} L ${half} ${half} L ${-half} ${half} L ${-half} ${half * 0.77} L ${-half * 0.62} ${half * 0.77} Z`} color={color} style="fill" />
-}
-
 function DiscShape({ color }: { color: string }) {
   const r = EQUIPMENT_SIZE / 2
   return (
@@ -55,20 +50,30 @@ function FlagShape() {
   )
 }
 
-function EquipmentSvgShape({ assetKey }: { assetKey: EquipmentAssetKey }) {
-  const svg = useEquipmentSvg(assetKey)
-  const config = EQUIPMENT_ASSETS[assetKey]
-  const width = config.nativeWidth
-  const height = width / config.aspectRatio
+// Renders the SVG at its own intrinsic size, then scales it to `targetWidth` via a Group
+// transform rather than ImageSVG's own width/height props. Skia's drawSvg container-size
+// scaling doesn't reliably resize the content on-device (it still renders near the SVG's
+// native size), so scaling through a transform — already proven correct for positioning — sidesteps that.
+function EquipmentSvgShape({
+  assetKey,
+  targetWidth,
+  recolor,
+}: {
+  assetKey: EquipmentAssetKey
+  targetWidth?: number
+  recolor?: string
+}) {
+  const svg = useEquipmentSvg(assetKey, recolor)
   if (!svg) return null
-  return <ImageSVG svg={svg} x={-width / 2} y={-height / 2} width={width} height={height} />
-}
-
-function GoalShape({ assetKey, widthPx }: { assetKey: 'goal' | 'mini-goal'; widthPx: number }) {
-  const svg = useEquipmentSvg(assetKey)
-  const heightPx = widthPx / EQUIPMENT_ASSETS[assetKey].aspectRatio
-  if (!svg) return null
-  return <ImageSVG svg={svg} x={-widthPx / 2} y={-heightPx / 2} width={widthPx} height={heightPx} />
+  const svgWidth = svg.width()
+  const svgHeight = svg.height()
+  const width = targetWidth ?? EQUIPMENT_ASSETS[assetKey].nativeWidth
+  const scale = width / svgWidth
+  return (
+    <Group transform={[{ scale }]}>
+      <ImageSVG svg={svg} x={-svgWidth / 2} y={-svgHeight / 2} width={svgWidth} height={svgHeight} />
+    </Group>
+  )
 }
 
 export function CanvasObject({ object, canvasSize, dragState }: CanvasObjectProps) {
@@ -86,7 +91,7 @@ export function CanvasObject({ object, canvasSize, dragState }: CanvasObjectProp
     case 'cone':
       return (
         <Group transform={transform}>
-          <ConeShape color={object.color ?? colors.canvasInk} />
+          <EquipmentSvgShape assetKey="cone" recolor={object.color ?? colors.canvasInk} />
         </Group>
       )
     case 'disc':
@@ -122,13 +127,13 @@ export function CanvasObject({ object, canvasSize, dragState }: CanvasObjectProp
     case 'goal':
       return (
         <Group transform={transform}>
-          <GoalShape assetKey="goal" widthPx={object.width * canvasSize.width} />
+          <EquipmentSvgShape assetKey="goal" targetWidth={object.width * canvasSize.width} />
         </Group>
       )
     case 'mini-goal':
       return (
         <Group transform={transform}>
-          <GoalShape assetKey="mini-goal" widthPx={object.width * canvasSize.width} />
+          <EquipmentSvgShape assetKey="mini-goal" targetWidth={object.width * canvasSize.width} />
         </Group>
       )
     default:

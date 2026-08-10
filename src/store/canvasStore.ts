@@ -3,15 +3,13 @@ import { create } from 'zustand'
 import { createDefaultObject } from '../utils/canvasUtils'
 import type { CanvasBackground, PlacedObject } from '../types'
 
+// Pole/Ladder/Flag/Disc are intentionally absent — dropped from the palette for a tighter
+// tool set (see types/canvas.ts); their PlacedObject types remain for a possible future re-add.
 export type PlaceableToolType =
   | 'player-blank'
   | 'player-gk'
   | 'player-co'
   | 'cone'
-  | 'pole'
-  | 'ladder'
-  | 'flag'
-  | 'disc'
   | 'goal'
   | 'mini-goal'
   | 'ball-bw'

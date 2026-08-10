@@ -202,6 +202,8 @@ export interface PlayerMarker extends BaseCanvasObject {
 
 export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }
 export interface Ball extends BaseCanvasObject { type: 'ball' }
+// Pole/Ladder/Flag/Disc: types retained for possible future re-add,
+// but removed from the tool palette as of the Session 2 simplification.
 export interface Pole extends BaseCanvasObject { type: 'pole' }
 export interface Ladder extends BaseCanvasObject { type: 'ladder' }
 export interface Flag extends BaseCanvasObject { type: 'flag' }
@@ -418,7 +420,7 @@ CREATE TABLE lineups (
 ### Phase 2 — Session planner (core loop)
 | Session | Deliverable | Done when |
 |---|---|---|
-| 2 | Canvas: backgrounds + object placement | All 6 backgrounds (white pitch, dark line markings); all tool-palette items placeable; equipment rendered from the SVG assets in `assets/icons/` recolored to `canvasInk` (Cone, Pole, Ladder, Flag, Disc as concentric circles, Goal + Mini-goal as separate assets, Ball); player tool offers plain + GK + Co presets; placed objects can be **dragged to reposition** (no selection/handles/toolbar yet — those are Session 3); `Cone`/`Disc` carry the optional `color` field (default `canvasInk`; editing UI is Session 3) |
+| 2 | Canvas: backgrounds + object placement | All 6 backgrounds (white pitch, dark line markings); tool palette placeable items are Player (plain + GK + Co presets), Cone, Goal, Mini-goal, and two Balls (BW + colored); equipment rendered from cleaned SVG assets in `assets/icons/`; cone body is recolorable via its `color` field (`fill="currentColor"`); goals/balls keep their own coloring; placed objects can be **dragged to reposition** (no selection/handles/toolbar yet — those are Session 3); equipment sized so all items render smaller than the 30px player marker except the full Goal; `Cone`/`Disc` carry the optional `color` field (cone editing UI is Session 3) |
 | 3 | Canvas: selection + arrows + undo + save | Full interaction; all 4 arrow types; undo/redo; activity saves locally with a thumbnail; appears in Library; unsaved-changes guard on dismiss (confirm before discarding in-progress marks) |
 | 4 | Activity library + Session builder | Drills grid + tag filter; Sessions view with a persistent "+" that opens the builder; create session, add/reorder activities, set block type + coaching points — all persisted locally |
 
@@ -465,6 +467,8 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Session PDF export | Single page up to 6 activities, paginate beyond | Keeps typical sessions readable as one sheet without illegibly compressing long ones |
 | Navigation | 3 tabs (Library · Training · Lineups), Training in center, no Home tab, no adaptive home content, no raised center Create button | Simpler nav surface; Training is the primary action so it sits center (under the thumb, where the old Create button was); Training tab intercepts its own tabPress to open Canvas directly |
 | Pitch rendering | White fill, dark (`canvasInk`) line markings — not a green turf | Maximum legibility for marks/objects, print-friendly, no new color token needed |
-| Equipment art | Real SVG assets in `assets/icons/`, recolored to `canvasInk` on load; disc as concentric circles; goal & mini-goal as separate assets | Higher fidelity than hand-drawn Skia primitives; source SVGs were green-pitch colored so they're recolored for the white pitch |
+| Equipment art | Cleaned SVG assets in `assets/icons/` (DOCTYPE/CSS stripped offline, pre-colored); cone body recolorable via `fill="currentColor"` driven by its `color` field; goal & mini-goal as separate assets with black frames; two ball options (BW + colored) | Offline-cleaned SVGs parse natively in Skia (no runtime repair); goals/balls carry their own coloring |
+| Equipment palette (simplified) | Palette = Player, Cone, Goal, Mini-goal, BW ball, Colored ball (+ Session 3 drawing tools). Pole/Ladder/Flag/Disc dropped from palette, types retained in model | Tighter, less cluttered tool set for a solo coach; easier to size consistently; parked types allow cheap future re-add |
+| Equipment sizing | Normalize by rendered on-canvas footprint (not raw SVG width), since each asset's viewBox/margin differs; all items smaller than the 30px marker except the full Goal | Identical width numbers produced very different visual sizes; normalizing by rendered result is the correct fix |
 | Per-object color (cone/disc) | Add optional `color` field in Session 2; editing UI in Session 3 with selection | Data model first, UI later — keeps Session 2 to placement while making Session 3's color picker a wiring task |
 | Reposition in Session 2 | Drag-to-move placed objects (no selection box/handles/toolbar) | Placement-refinement so mis-taps are fixable; full selection stays Session 3 |

@@ -23,6 +23,8 @@ export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }
 // `variant` is a Session 2 scaffolding field so the two comparison ball assets render
 // distinctly on canvas. Collapse to a single fixed asset (and drop this field) once one is picked.
 export interface Ball extends BaseCanvasObject { type: 'ball'; variant?: 'bw' | 'color' }
+// Pole/Ladder/Flag/Disc: types retained for possible future re-add, but removed from the tool
+// palette as of the Session 2 simplification (see store/canvasStore.ts's PlaceableToolType).
 export interface Pole extends BaseCanvasObject { type: 'pole' }
 export interface Ladder extends BaseCanvasObject { type: 'ladder' }
 export interface Flag extends BaseCanvasObject { type: 'flag' }

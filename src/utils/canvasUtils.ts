@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Asset } from 'expo-asset'
 import { randomUUID } from 'expo-crypto'
 import * as FileSystem from 'expo-file-system/legacy'
@@ -13,7 +13,11 @@ import type { PlacedObject } from '../types'
 export const HIT_RADIUS = 24
 export const TAP_SLOP = 8
 
-// Equipment SVG assets — recolored (ladder/goal/mini-goal) or stroke-thickened (balls) on load.
+// Equipment SVG assets. The files in assets/icons/ are pre-cleaned and pre-colored (plain
+// XML presentation attributes, no DOCTYPE/CSS — see assets/icons/ history for why that matters
+// to Skia's SVG parser), so the loader only needs to load them. Cone/Disc recoloring is a
+// separate, unrelated mechanism — those are hand-drawn Skia primitives whose `color` field is
+// read directly at render time (see CanvasObject.tsx), not part of this SVG pipeline.
 // agilityRing.svg is intentionally unused: the disc is drawn as concentric Skia circles per design.md §7.
 
 // Tunable: the ball SVGs' native stroke-width (~0.1 in an ~9-unit viewBox) renders far thinner than
@@ -22,94 +26,51 @@ export const TAP_SLOP = 8
 // since every patch's stroke is a dark color that competes with the fill. Adjust to taste.
 const BALL_STROKE_MULTIPLIER = 3
 
+// nativeWidth is NOT the raw SVG width prop — each source file has a different viewBox and a
+// different amount of empty margin around its actual ink, so identical width numbers render at
+// visibly different sizes across assets (confirmed by measuring rendered pixel footprints on
+// device, not just trusting the declared viewBox). nativeWidth here is a *calibrated* value
+// already correcting for that per-asset content/margin ratio, so that setting the same
+// nativeWidth across assets produces the same visual footprint. See CanvasObject.tsx for how
+// it's applied (scale = nativeWidth / svg.width(), i.e. against the SVG's own declared size —
+// the calibration is baked into the numbers below, not computed at render time).
+// Sizing rule (design.md §7): the 30px player marker is the largest thing on the canvas except
+// the full Goal, which stays large by design (~1.3-1.5x a marker); everything else — cone, both
+// balls, mini-goal — is calibrated to render clearly smaller than a marker (~20-24px).
 export const EQUIPMENT_ASSETS = {
-  // Ladder's whole silhouette comes from one filled compound path (the rung cutouts
-  // only exist because of the fill), so it keeps its fill recolored to canvasInk.
+  cone: {
+    module: require('../../assets/icons/cone.svg') as number,
+    thicken: false,
+    nativeWidth: 23,
+  },
   ladder: {
     module: require('../../assets/icons/ladder.svg') as number,
-    mode: 'recolor' as const,
-    aspectRatio: 92.6 / 14.6,
-    nativeWidth: 44,
+    thicken: false,
+    nativeWidth: canvas.equipment.size,
   },
-  // Goal/mini-goal's fills are Illustrator's fake-3D frame-extrusion quads (meant for a
-  // photoreal green-pitch look) — recoloring them solid turns the frame into a black
-  // blob. Stripping fill (each shape still has its own stroke) renders a clean wireframe.
   goal: {
     module: require('../../assets/icons/soccerGoal.svg') as number,
-    mode: 'recolor-outline' as const,
-    aspectRatio: 131.2 / 68,
-    nativeWidth: 36,
+    thicken: false,
+    nativeWidth: 42,
   },
   'mini-goal': {
     module: require('../../assets/icons/miniSoccerGoal.svg') as number,
-    mode: 'recolor-outline' as const,
-    aspectRatio: 49.5 / 32.5,
-    nativeWidth: 32,
+    thicken: false,
+    nativeWidth: 26,
   },
   'ball-bw': {
     module: require('../../assets/icons/BWsoccerBall.svg') as number,
-    mode: 'thicken' as const,
-    aspectRatio: 8.9 / 9,
-    nativeWidth: canvas.equipment.size,
+    thicken: true,
+    nativeWidth: 23,
   },
   'ball-color': {
     module: require('../../assets/icons/soccerBall.svg') as number,
-    mode: 'thicken' as const,
-    aspectRatio: 8.9 / 9,
-    nativeWidth: canvas.equipment.size,
+    thicken: true,
+    nativeWidth: 23,
   },
 } as const
 
 export type EquipmentAssetKey = keyof typeof EQUIPMENT_ASSETS
-
-// The source SVGs are Adobe Illustrator exports with a DOCTYPE/internal-entity header
-// (custom ENTITY declarations referenced via xmlns:x="&ns_extend;" etc). Skia's SVG parser
-// doesn't resolve custom entities and silently fails to parse the whole document, so strip
-// that boilerplate first — it carries no rendered content.
-function stripAdobeCruft(svgText: string): string {
-  return svgText.replace(/<!DOCTYPE[^[]*\[[^\]]*\]>/, '').replace(/\s+xmlns:(x|i|graph|a)="[^"]*"/g, '')
-}
-
-// These source SVGs put all styling in a <style> CSS block with class="stN" per element —
-// Skia's SVG parser doesn't resolve that (fill silently defaults to black regardless of what
-// the CSS says), so inline each class's declarations onto its elements as plain XML
-// presentation attributes (fill="...", stroke="...", ...), which every SVG parser supports.
-function inlineSvgClasses(svgText: string): string {
-  const styleMatch = svgText.match(/<style[^]*?<\/style>/)
-  if (!styleMatch) return svgText
-
-  const classAttrs = new Map<string, string>()
-  const ruleRegex = /\.(\w+)\s*\{([^}]*)\}/g
-  let rule: RegExpExecArray | null
-  // eslint-disable-next-line no-cond-assign
-  while ((rule = ruleRegex.exec(styleMatch[0]))) {
-    const attrs = rule[2]
-      .split(';')
-      .map((declaration) => declaration.trim())
-      .filter(Boolean)
-      .map((declaration) => {
-        const [prop, value] = declaration.split(':').map((part) => part.trim())
-        return `${prop}="${value}"`
-      })
-      .join(' ')
-    classAttrs.set(rule[1], attrs)
-  }
-
-  return svgText.replace(styleMatch[0], '').replace(/class="(\w+)"/g, (full, className: string) => classAttrs.get(className) ?? full)
-}
-
-function recolorSvgText(svgText: string, hexColor: string): string {
-  return svgText
-    .replace(/fill="#[0-9A-Fa-f]{3,8}"/g, `fill="${hexColor}"`)
-    .replace(/stroke="#[0-9A-Fa-f]{3,8}"/g, `stroke="${hexColor}"`)
-}
-
-// Like recolorSvgText, but drops fills to `none` instead of recoloring them — renders as a
-// wireframe of just the strokes. Used for assets whose fills are 3D-extrusion shading rather
-// than the actual silhouette (see EQUIPMENT_ASSETS comments).
-function recolorSvgOutline(svgText: string, hexColor: string): string {
-  return svgText.replace(/fill="#[0-9A-Fa-f]{3,8}"/g, 'fill="none"').replace(/stroke="#[0-9A-Fa-f]{3,8}"/g, `stroke="${hexColor}"`)
-}
 
 function thickenStrokeWidths(svgText: string, multiplier: number): string {
   return svgText.replace(
@@ -118,13 +79,25 @@ function thickenStrokeWidths(svgText: string, multiplier: number): string {
   )
 }
 
-const svgCache = new Map<string, SkSVG | null>()
-const svgLoads = new Map<string, Promise<SkSVG | null>>()
+// Skia's SVG parser doesn't resolve currentColor (it doesn't do CSS cascade resolution at all —
+// see the DOCTYPE/CSS-class history for this file), so a per-object recolor like the cone's
+// `fill="currentColor"` body needs the literal text substituted before parsing. react-native-svg
+// (used for the palette icon) *does* support currentColor via its own `color` prop, so this is
+// only needed for the Skia canvas path.
+export function applyCurrentColor(svgText: string, hexColor: string): string {
+  return svgText.split('currentColor').join(hexColor)
+}
 
-async function loadEquipmentSvg(key: EquipmentAssetKey): Promise<SkSVG | null> {
-  if (svgCache.has(key)) return svgCache.get(key) ?? null
+// Raw (processed) SVG text — shared by two consumers: the Skia canvas (parses it into an
+// SkSVG) and the tool-palette button icons (rendered as a normal RN view via react-native-svg's
+// SvgXml, since palette buttons live outside the Skia <Canvas>). One loader, two renderers.
+const svgTextCache = new Map<string, string | null>()
+const svgTextLoads = new Map<string, Promise<string | null>>()
 
-  const existing = svgLoads.get(key)
+async function loadEquipmentSvgText(key: EquipmentAssetKey): Promise<string | null> {
+  if (svgTextCache.has(key)) return svgTextCache.get(key) ?? null
+
+  const existing = svgTextLoads.get(key)
   if (existing) return existing
 
   const promise = (async () => {
@@ -133,38 +106,54 @@ async function loadEquipmentSvg(key: EquipmentAssetKey): Promise<SkSVG | null> {
     await asset.downloadAsync()
     if (!asset.localUri) return null
 
-    const raw = inlineSvgClasses(stripAdobeCruft(await FileSystem.readAsStringAsync(asset.localUri)))
-    let processed: string
-    if (config.mode === 'recolor') {
-      processed = recolorSvgText(raw, colors.canvasInk)
-    } else if (config.mode === 'recolor-outline') {
-      processed = recolorSvgOutline(raw, colors.canvasInk)
-    } else {
-      processed = thickenStrokeWidths(raw, BALL_STROKE_MULTIPLIER)
-    }
-    const svg = Skia.SVG.MakeFromString(processed)
-    svgCache.set(key, svg)
-    return svg
+    const raw = await FileSystem.readAsStringAsync(asset.localUri)
+    const processed = config.thicken ? thickenStrokeWidths(raw, BALL_STROKE_MULTIPLIER) : raw
+    svgTextCache.set(key, processed)
+    return processed
   })()
 
-  svgLoads.set(key, promise)
+  svgTextLoads.set(key, promise)
   return promise
 }
 
-export function useEquipmentSvg(key: EquipmentAssetKey): SkSVG | null {
-  const [svg, setSvg] = useState<SkSVG | null>(svgCache.get(key) ?? null)
+export function useEquipmentSvgText(key: EquipmentAssetKey): string | null {
+  const [text, setText] = useState<string | null>(svgTextCache.get(key) ?? null)
 
   useEffect(() => {
     let cancelled = false
-    loadEquipmentSvg(key).then((result) => {
-      if (!cancelled) setSvg(result)
+    loadEquipmentSvgText(key).then((result) => {
+      if (!cancelled) setText(result)
     })
     return () => {
       cancelled = true
     }
   }, [key])
 
+  return text
+}
+
+// Keyed by the exact (already-recolored, if applicable) text, so distinctly-colored instances
+// of the same asset (e.g. two cones in different colors) each get their own parsed SkSVG while
+// identically-colored instances share one.
+const skSvgCache = new Map<string, SkSVG | null>()
+
+function parseEquipmentSvg(text: string): SkSVG | null {
+  if (skSvgCache.has(text)) return skSvgCache.get(text) ?? null
+  const svg = Skia.SVG.MakeFromString(text)
+  skSvgCache.set(text, svg)
   return svg
+}
+
+// `recolorHex`, if given, substitutes the asset's `currentColor` placeholders (see
+// applyCurrentColor) before parsing — used for per-object-colorable equipment like the cone.
+export function useEquipmentSvg(key: EquipmentAssetKey, recolorHex?: string): SkSVG | null {
+  const text = useEquipmentSvgText(key)
+
+  return useMemo(() => {
+    if (!text) return null
+    const finalText = recolorHex ? applyCurrentColor(text, recolorHex) : text
+    return parseEquipmentSvg(finalText)
+  }, [text, recolorHex])
 }
 
 // Default object factory — PlacedObject.x/y/width are normalized 0..1 fractions of the
@@ -188,14 +177,6 @@ export function createDefaultObject(tool: PlaceableToolType, x: number, y: numbe
       return { ...base, type: 'player', label: 'Co', teamIndex: 0 }
     case 'cone':
       return { ...base, type: 'cone', color: colors.canvasInk }
-    case 'disc':
-      return { ...base, type: 'disc', color: colors.canvasInk }
-    case 'pole':
-      return { ...base, type: 'pole' }
-    case 'ladder':
-      return { ...base, type: 'ladder' }
-    case 'flag':
-      return { ...base, type: 'flag' }
     case 'goal':
       return { ...base, type: 'goal', width: EQUIPMENT_ASSETS.goal.nativeWidth / canvasSize.width }
     case 'mini-goal':

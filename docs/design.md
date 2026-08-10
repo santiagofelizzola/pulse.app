@@ -373,21 +373,22 @@ The canvas uses its **own** dark bar (see §7), not this component.
 
 ## 7. Canvas Design Rules
 
-The canvas is full-screen and full-bleed (`radius.none`). The pitch fills the viewport. **The pitch is rendered white (`colors.background`) with dark line markings (`colors.canvasInk`)** — not a green turf fill; keeping the field white keeps the coach's marks and objects maximally legible and the diagram print-friendly. The floating chrome (top bar, tool palette) is still dark and recedes over the white field.
+The canvas screen is **one continuous light surface** (`colors.background`), not a full-bleed dark-chrome-over-white-pitch composition — reference: SoccerDrive/Sogility. The pitch itself is fit to `canvas.pitchAspectRatio` (a real pitch's ~105:68 length:width, rotated to portrait) rather than stretched to fill the viewport, centered with margin above/below/beside it, bordered with a thin `colors.canvasInk` hairline so its edge reads clearly against the page — no dark margin framing it. **The pitch surface itself stays white (`colors.background`) with dark line markings (`colors.canvasInk`)** for legibility and print-friendliness; what changed is the chrome around it, not the pitch rendering itself. Top bar and tools are both light and sit **outside** the pitch (tools below it, not floating over it) rather than as dark overlays receding over the field.
 
-### Top bar (dark overlay)
+### Top bar (light)
 
-- Background `colors.overlayBar`, or a top-down gradient from `rgba(20,22,24,0.72)` → `transparent` for a softer edge.
-- Height 56 + safe-area top inset. Contents: back (left), session/activity title (`typography.h3`, `colors.textInverse`), actions (right: undo/redo, save, share/export). The back action (and the modal's swipe-down dismiss) triggers the unsaved-changes confirm prompt when there are unsaved marks — see the unsaved-changes guard in `architecture.md`.
-- All icons/text `colors.textInverse`, icon size 22, `layout.touchTarget` hit areas.
+- Background `colors.background`, distinguished from the pitch area below by a 1px `colors.borderSubtle` bottom border rather than a dark fill.
+- Height 56 + safe-area top inset. Contents: back (left), session/activity title (`typography.h3`, `colors.textPrimary`), actions (right: undo/redo, save, share/export). The back action (and the modal's swipe-down dismiss) triggers the unsaved-changes confirm prompt when there are unsaved marks — see the unsaved-changes guard in `architecture.md`.
+- All icons/text `colors.textPrimary`, icon size 22, `layout.touchTarget` hit areas.
 
-### Tool palette (bottom)
+### Tool tray (below the canvas)
 
-- Floating rounded bar, **not** full-width: `colors.overlayBar`, `radius.pill`, `shadow.lg`, centered horizontally, sitting safe-area + `spacing.lg` from the bottom.
-- Tool button: 44×44 touch target, icon 24, `colors.textInverse` inactive.
-- **Selected tool**: 40×40 inner pill fill `colors.primary`, white icon.
-- Internal padding `spacing.sm`, gap between tools `spacing.xs`.
-- Tool groups (select, players, lines, equipment, text, erase) separated by a 1px `rgba(255,255,255,0.16)` divider.
+- Sits in normal layout flow **below** the pitch, not a floating overlay: `colors.background`, 1px `colors.borderSubtle` top border, no pill/tray fill, no shadow.
+- Laid out as a **wrapping grid** (not a single scrollable row) so every tool is visible at once on a portrait screen — as many rows as needed.
+- Tool button: 44×44 touch target, icon 24, `colors.textPrimary` inactive.
+- **Selected tool**: `colors.primaryTint` circular fill behind the icon, icon `colors.primary` (same selected treatment as a filter chip — see §6).
+- Gap between tools `spacing.sm`.
+- The player tool's blank/GK/Co presets open as a small light popover (`colors.surface`, 1px `colors.border`, `shadow.md`) above the tool grid — the one legitimate floating-shadow use here, since it's a transient overlay, not the tray itself.
 
 ### Background picker
 

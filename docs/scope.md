@@ -26,7 +26,7 @@ Two features, both fully offline and stored locally:
 
 > **Free-draw canvas → activity library → session builder → local export.**
 
-- **Canvas** — full-screen pitch with tool palette, background picker, player markers, equipment, and movement lines (pass / shot / off-ball / dribble). Free-draw diagramming of a single drill or phase.
+- **Canvas** — pitch with tool palette, background picker, player markers, equipment, and movement lines (pass / shot / off-ball / dribble). Free-draw diagramming of a single drill or phase.
 - **Activity library** — save canvas diagrams as reusable activities. An activity carries a name, a single `tag`, optional duration, and freeform notes. Grid view with filter chips that key off the activity tag.
 - **Session builder** — sequence activities into a session (the hybrid card: color bar + canvas thumbnail + inline expandable coaching points). **Block type and coaching points are assigned per session block** (`SessionActivity`) when an activity is dropped into a session — not on the activity itself. The same activity can be a "warm-up" in one session and "technical" in another.
 

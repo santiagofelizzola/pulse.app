@@ -95,6 +95,10 @@ export const canvas = {
   marker: { diameter: 30, border: 2 },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
+  // width:height for a portrait pitch (a real pitch is ~105x68 length:width; rotated to
+  // portrait that's width:height = 68:105). The canvas is fit to this ratio, not full-bleed,
+  // so pitch markings stay proportionally correct instead of stretching to fill the screen.
+  pitchAspectRatio: 68 / 105,
   line: {
     strokeWidth: 2.5,
     doubleGap: 3,
