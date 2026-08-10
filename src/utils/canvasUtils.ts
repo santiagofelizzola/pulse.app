@@ -4,7 +4,7 @@ import { randomUUID } from 'expo-crypto'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Skia, type SkSVG } from '@shopify/react-native-skia'
 
-import { canvas, colors } from '../theme/theme'
+import { canvas } from '../theme/theme'
 import type { PlaceableToolType } from '../store/canvasStore'
 import type { PlacedObject } from '../types'
 
@@ -12,6 +12,11 @@ import type { PlacedObject } from '../types'
 
 export const HIT_RADIUS = 24
 export const TAP_SLOP = 8
+
+// Default cone body color — traffic-cone orange, distinct from the fixed dark base stripe
+// baked into cone.svg. (Other equipment still defaults to colors.canvasInk; the cone is the
+// one currently-colorable item, so it gets a color worth seeing by default.)
+export const CONE_DEFAULT_COLOR = '#EE7110'
 
 // Equipment SVG assets. The files in assets/icons/ are pre-cleaned and pre-colored (plain
 // XML presentation attributes, no DOCTYPE/CSS — see assets/icons/ history for why that matters
@@ -51,12 +56,12 @@ export const EQUIPMENT_ASSETS = {
   goal: {
     module: require('../../assets/icons/soccerGoal.svg') as number,
     thicken: false,
-    nativeWidth: 42,
+    nativeWidth: 50,
   },
   'mini-goal': {
     module: require('../../assets/icons/miniSoccerGoal.svg') as number,
     thicken: false,
-    nativeWidth: 26,
+    nativeWidth: 31,
   },
   'ball-bw': {
     module: require('../../assets/icons/BWsoccerBall.svg') as number,
@@ -176,7 +181,7 @@ export function createDefaultObject(tool: PlaceableToolType, x: number, y: numbe
     case 'player-co':
       return { ...base, type: 'player', label: 'Co', teamIndex: 0 }
     case 'cone':
-      return { ...base, type: 'cone', color: colors.canvasInk }
+      return { ...base, type: 'cone', color: CONE_DEFAULT_COLOR }
     case 'goal':
       return { ...base, type: 'goal', width: EQUIPMENT_ASSETS.goal.nativeWidth / canvasSize.width }
     case 'mini-goal':

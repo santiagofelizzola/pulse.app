@@ -5,7 +5,7 @@ import { SvgXml } from 'react-native-svg'
 
 import { canvas, colors, fonts, radius, shadow, spacing, typography } from '../../../theme/theme'
 import type { PlaceableToolType } from '../../../store/canvasStore'
-import { useEquipmentSvgText, type EquipmentAssetKey } from '../../../utils/canvasUtils'
+import { CONE_DEFAULT_COLOR, useEquipmentSvgText, type EquipmentAssetKey } from '../../../utils/canvasUtils'
 
 interface ToolPaletteProps {
   activeTool: PlaceableToolType | null
@@ -49,17 +49,19 @@ function SvgToolIcon({ assetKey, tint }: { assetKey: EquipmentAssetKey; tint?: s
 
 // The cone's body uses fill="currentColor" (it's per-object recolorable — see CanvasObject.tsx),
 // which react-native-svg resolves natively via the `color` prop, so no text substitution is
-// needed here the way SvgToolIcon needs it for the baked-hex assets.
-function ConeToolIcon({ selected }: { selected: boolean }) {
+// needed here the way SvgToolIcon needs it for the baked-hex assets. Always shown in the same
+// orange the cone actually places with (matching CONE_DEFAULT_COLOR) — like the ball icons, it
+// keeps its own color even when selected; the primaryTint backdrop alone signals selection.
+function ConeToolIcon() {
   const xml = useEquipmentSvgText('cone')
   if (!xml) return <View style={{ width: ICON_SIZE, height: ICON_SIZE }} />
-  return <SvgXml xml={xml} width={ICON_SIZE} height={ICON_SIZE} color={selected ? colors.primary : colors.textPrimary} />
+  return <SvgXml xml={xml} width={ICON_SIZE} height={ICON_SIZE} color={CONE_DEFAULT_COLOR} />
 }
 
 function ToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boolean }) {
   switch (tool) {
     case 'cone':
-      return <ConeToolIcon selected={selected} />
+      return <ConeToolIcon />
     case 'goal':
       return <SvgToolIcon assetKey="goal" tint={selected ? colors.primary : undefined} />
     case 'mini-goal':

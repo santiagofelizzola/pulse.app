@@ -2,7 +2,7 @@ import { Circle, Group, ImageSVG, Line, Path, RoundedRect } from '@shopify/react
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { canvas, colors } from '../../../theme/theme'
-import { EQUIPMENT_ASSETS, useEquipmentSvg, type EquipmentAssetKey } from '../../../utils/canvasUtils'
+import { CONE_DEFAULT_COLOR, EQUIPMENT_ASSETS, useEquipmentSvg, type EquipmentAssetKey } from '../../../utils/canvasUtils'
 import type { PlacedObject } from '../../../types'
 import type { DragState } from '../hooks/useCanvasGestures'
 
@@ -91,7 +91,7 @@ export function CanvasObject({ object, canvasSize, dragState }: CanvasObjectProp
     case 'cone':
       return (
         <Group transform={transform}>
-          <EquipmentSvgShape assetKey="cone" recolor={object.color ?? colors.canvasInk} />
+          <EquipmentSvgShape assetKey="cone" recolor={object.color ?? CONE_DEFAULT_COLOR} />
         </Group>
       )
     case 'disc':
