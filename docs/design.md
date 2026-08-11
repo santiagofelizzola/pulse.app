@@ -423,7 +423,7 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 | Line type | Meaning (`ArrowType`) | Spec |
 |---|---|---|
 | Solid | Pass (`pass`) | single stroke, width **2.5** |
-| Double solid | Shot (`shot`) | two parallel strokes width **2.5**, gap **3** between centers |
+| Double solid | Shot (`shot`) | two parallel strokes width **2.5**, gap **5** between centers |
 | Dashed | Off-ball movement (`run`) | width **2.5**, dash pattern `[8, 6]` |
 | Squiggly / wavy | Dribble (`dribble`) | width **2.5**, sine wave amplitude **5**, wavelength **16** |
 
@@ -624,7 +624,7 @@ export const canvas = {
   equipment: { size: 26 },
   line: {
     strokeWidth: 2.5,
-    doubleGap: 3,
+    doubleGap: 5,
     dash: [8, 6],
     waveAmplitude: 5,
     waveLength: 16,

@@ -13,6 +13,14 @@ import type { PlacedObject } from '../types'
 export const HIT_RADIUS = 24
 export const TAP_SLOP = 8
 
+// Selection handles (design.md §7: 20px circles, 44px touch target via hit-slop). Shared
+// between the gesture hook (hit-testing, on the UI thread) and SelectionOverlay (rendering,
+// on the JS thread) so the drawn handle position always matches where a touch actually lands.
+export const ROTATE_HANDLE_GAP = 20
+export const HANDLE_HIT_RADIUS = canvas.toolButton / 2
+export const SCALE_MIN = 0.5
+export const SCALE_MAX = 2.5
+
 // Default cone body color — traffic-cone orange, distinct from the fixed dark base stripe
 // baked into cone.svg. (Other equipment still defaults to colors.canvasInk; the cone is the
 // one currently-colorable item, so it gets a color worth seeing by default.)
@@ -168,6 +176,136 @@ export function useEquipmentSvg(key: EquipmentAssetKey, recolorHex?: string): Sk
 interface CanvasSize {
   width: number
   height: number
+}
+
+// Selection / hit-testing geometry
+//
+// Bounding footprint per object type, in on-screen pixels (not normalized), for the selection
+// outline and toolbar/handle positioning. Goal/mini-goal only store a normalized `width`, so
+// height is derived from a calibrated aspect constant rather than a stored value.
+const GOAL_ASPECT = 0.55
+const MINI_GOAL_ASPECT = 0.6
+
+// Geometry helpers below are called both from plain JS (SelectionOverlay) and from inside the
+// canvas gesture's UI-thread worklet (useCanvasGestures) for live hit-testing — 'worklet' makes
+// them callable from either context via the same implementation.
+
+export function getObjectFootprint(object: PlacedObject, canvasSize: CanvasSize): { width: number; height: number } {
+  'worklet'
+  switch (object.type) {
+    case 'player':
+      return { width: canvas.marker.diameter, height: canvas.marker.diameter }
+    case 'goal':
+      return { width: object.width * canvasSize.width, height: object.width * canvasSize.width * GOAL_ASPECT }
+    case 'mini-goal':
+      return { width: object.width * canvasSize.width, height: object.width * canvasSize.width * MINI_GOAL_ASPECT }
+    case 'zone':
+      return { width: object.width * canvasSize.width, height: object.height * canvasSize.height }
+    case 'label':
+      return { width: canvas.equipment.size, height: canvas.equipment.size }
+    case 'cone':
+    case 'disc':
+    case 'pole':
+    case 'ladder':
+    case 'flag':
+    case 'ball':
+      return { width: canvas.equipment.size, height: canvas.equipment.size }
+  }
+}
+
+export interface ScreenBox {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+// Rotates a point given in object-local space (origin at the object's center) by `rotation`
+// radians and places it at world position (cx, cy). Shared by the bounding-box corners below
+// and by the gesture hook's rotate/scale handle positioning.
+export function rotatePointAround(
+  local: { x: number; y: number },
+  rotation: number,
+  cx: number,
+  cy: number
+): { x: number; y: number } {
+  'worklet'
+  const cos = Math.cos(rotation)
+  const sin = Math.sin(rotation)
+  return { x: cx + local.x * cos - local.y * sin, y: cy + local.x * sin + local.y * cos }
+}
+
+// Axis-aligned bounding box that circumscribes a rotated rect (object footprint + rotation),
+// used to position the selection outline/toolbar without needing per-corner rotation in RN layout.
+export function rotatedBoundingBox(cx: number, cy: number, width: number, height: number, rotation: number): ScreenBox {
+  'worklet'
+  const hw = width / 2
+  const hh = height / 2
+  const corners = [
+    rotatePointAround({ x: -hw, y: -hh }, rotation, cx, cy),
+    rotatePointAround({ x: hw, y: -hh }, rotation, cx, cy),
+    rotatePointAround({ x: hw, y: hh }, rotation, cx, cy),
+    rotatePointAround({ x: -hw, y: hh }, rotation, cx, cy),
+  ]
+
+  const xs = corners.map((corner) => corner.x)
+  const ys = corners.map((corner) => corner.y)
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) }
+}
+
+export function cubicBezierPointAt(
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  t: number
+): { x: number; y: number } {
+  'worklet'
+  const mt = 1 - t
+  const a = mt * mt * mt
+  const b = 3 * mt * mt * t
+  const c = 3 * mt * t * t
+  const d = t * t * t
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  }
+}
+
+const BEZIER_SAMPLES = 24
+
+// Approximate (sampled, not analytic) distance from a point to a cubic bezier — exact enough
+// for hit-testing at BEZIER_SAMPLES resolution given the short, mostly-straight arrows this
+// canvas draws. Used for arrow selection, inflated by canvas.line.hitInflate by the caller.
+export function distanceToCubicBezier(
+  point: { x: number; y: number },
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number }
+): number {
+  'worklet'
+  let min = Infinity
+  for (let i = 0; i <= BEZIER_SAMPLES; i += 1) {
+    const sample = cubicBezierPointAt(p0, p1, p2, p3, i / BEZIER_SAMPLES)
+    const distance = Math.hypot(point.x - sample.x, point.y - sample.y)
+    if (distance < min) min = distance
+  }
+  return min
+}
+
+// Screen-space bounding box of an arrow's curve (sampled), for toolbar/selection positioning.
+// `points` are normalized 0..1; canvasSize converts to on-screen pixels.
+export function getArrowScreenBounds(points: { x: number; y: number }[], canvasSize: CanvasSize): ScreenBox {
+  const [p0, p1, p2, p3] = points.map((point) => ({ x: point.x * canvasSize.width, y: point.y * canvasSize.height }))
+  const xs: number[] = []
+  const ys: number[] = []
+  for (let i = 0; i <= BEZIER_SAMPLES; i += 1) {
+    const sample = cubicBezierPointAt(p0, p1, p2, p3, i / BEZIER_SAMPLES)
+    xs.push(sample.x)
+    ys.push(sample.y)
+  }
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) }
 }
 
 export function createDefaultObject(tool: PlaceableToolType, x: number, y: number, canvasSize: CanvasSize): PlacedObject {

@@ -3,26 +3,32 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 
 import { canvas, colors, fonts, radius, typography } from '../../../theme/theme'
 import type { PlayerMarker } from '../../../types'
-import type { DragState } from '../hooks/useCanvasGestures'
+import type { InteractionState } from '../hooks/useCanvasGestures'
 
 interface PlayerMarkerOverlayProps {
   object: PlayerMarker
   canvasSize: { width: number; height: number }
-  dragState: SharedValue<DragState>
+  interaction: SharedValue<InteractionState>
 }
 
 const DIAMETER = canvas.marker.diameter
 
-export function PlayerMarkerOverlay({ object, canvasSize, dragState }: PlayerMarkerOverlayProps) {
+export function PlayerMarkerOverlay({ object, canvasSize, interaction }: PlayerMarkerOverlayProps) {
   const style = useAnimatedStyle(() => {
     const baseX = object.x * canvasSize.width
     const baseY = object.y * canvasSize.height
-    const isDragging = dragState.value.id === object.id
-    const x = isDragging ? baseX + dragState.value.dx : baseX
-    const y = isDragging ? baseY + dragState.value.dy : baseY
+    const live = interaction.value
+    const isTarget = live.targetId === object.id
+
+    const x = isTarget && live.mode === 'move' ? baseX + live.dx : baseX
+    const y = isTarget && live.mode === 'move' ? baseY + live.dy : baseY
+    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : object.rotation
+    const scale = isTarget && live.mode === 'scale' ? live.scale : object.scale
+
     return {
       left: x - DIAMETER / 2,
       top: y - DIAMETER / 2,
+      transform: [{ rotate: `${rotation}rad` }, { scale }],
     }
   })
 

@@ -4,12 +4,12 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { canvas, colors } from '../../../theme/theme'
 import { CONE_DEFAULT_COLOR, EQUIPMENT_ASSETS, useEquipmentSvg, type EquipmentAssetKey } from '../../../utils/canvasUtils'
 import type { PlacedObject } from '../../../types'
-import type { DragState } from '../hooks/useCanvasGestures'
+import type { InteractionState } from '../hooks/useCanvasGestures'
 
 interface CanvasObjectProps {
   object: Exclude<PlacedObject, { type: 'player' }>
   canvasSize: { width: number; height: number }
-  dragState: SharedValue<DragState>
+  interaction: SharedValue<InteractionState>
 }
 
 const EQUIPMENT_SIZE = canvas.equipment.size
@@ -76,16 +76,21 @@ function EquipmentSvgShape({
   )
 }
 
-export function CanvasObject({ object, canvasSize, dragState }: CanvasObjectProps) {
+export function CanvasObject({ object, canvasSize, interaction }: CanvasObjectProps) {
   const transform = useDerivedValue(() => {
     const baseX = object.x * canvasSize.width
     const baseY = object.y * canvasSize.height
-    const isDragging = dragState.value.id === object.id
-    const x = isDragging ? baseX + dragState.value.dx : baseX
-    const y = isDragging ? baseY + dragState.value.dy : baseY
-    return [{ translateX: x }, { translateY: y }]
+    const live = interaction.value
+    const isTarget = live.targetId === object.id
+
+    const x = isTarget && live.mode === 'move' ? baseX + live.dx : baseX
+    const y = isTarget && live.mode === 'move' ? baseY + live.dy : baseY
+    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : object.rotation
+    const scale = isTarget && live.mode === 'scale' ? live.scale : object.scale
+
+    return [{ translateX: x }, { translateY: y }, { rotate: rotation }, { scale }]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [object.x, object.y, canvasSize.width, canvasSize.height])
+  }, [object.x, object.y, object.rotation, object.scale, canvasSize.width, canvasSize.height])
 
   switch (object.type) {
     case 'cone':

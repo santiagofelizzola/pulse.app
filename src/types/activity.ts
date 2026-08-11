@@ -22,4 +22,5 @@ export interface CreateActivityInput {
   durationMinutes?: number
   notes?: string
   canvasData: CanvasData
+  thumbnailUri?: string      // local file path (expo-file-system), generated on save
 }

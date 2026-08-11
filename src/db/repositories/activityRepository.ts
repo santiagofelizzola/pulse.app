@@ -51,6 +51,7 @@ async function create(input: CreateActivityInput): Promise<Activity> {
     durationMinutes: input.durationMinutes,
     notes: input.notes,
     canvasData: input.canvasData,
+    thumbnailUri: input.thumbnailUri,
     createdAt: now,
     updatedAt: now,
   }

@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { UserRound } from 'lucide-react-native'
-import { SvgXml } from 'react-native-svg'
+import { Path as SvgPath, Svg, SvgXml } from 'react-native-svg'
 
 import { canvas, colors, fonts, radius, shadow, spacing, typography } from '../../../theme/theme'
-import type { PlaceableToolType } from '../../../store/canvasStore'
+import type { CanvasTool, PlaceableToolType } from '../../../store/canvasStore'
 import { CONE_DEFAULT_COLOR, useEquipmentSvgText, type EquipmentAssetKey } from '../../../utils/canvasUtils'
+import type { ArrowType } from '../../../types'
 
 interface ToolPaletteProps {
-  activeTool: PlaceableToolType | null
-  onSelectTool: (tool: PlaceableToolType) => void
+  activeTool: CanvasTool
+  onSelectTool: (tool: CanvasTool) => void
 }
 
 const EQUIPMENT_TOOLS: Array<{ tool: PlaceableToolType; label: string }> = [
@@ -26,6 +27,13 @@ const PLAYER_PRESETS: Array<{ tool: PlaceableToolType; label: string }> = [
   { tool: 'player-blank', label: '' },
   { tool: 'player-gk', label: 'GK' },
   { tool: 'player-co', label: 'Co' },
+]
+
+const ARROW_TOOLS: Array<{ type: ArrowType; label: string }> = [
+  { type: 'pass', label: 'Pass' },
+  { type: 'shot', label: 'Shot' },
+  { type: 'run', label: 'Run' },
+  { type: 'dribble', label: 'Dribble' },
 ]
 
 const ICON_SIZE = 24
@@ -75,9 +83,58 @@ function ToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boole
   }
 }
 
+// No stock icon set covers "squiggly dribble line" vs. "double solid shot line", so each arrow
+// tool gets a small hand-drawn line-preview swatch (same idea as the player-preset marker
+// preview below) instead of a lucide icon.
+function ArrowToolIcon({ type, selected }: { type: ArrowType; selected: boolean }) {
+  const color = selected ? colors.primary : colors.textPrimary
+
+  switch (type) {
+    case 'pass':
+      return (
+        <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24">
+          <SvgPath d="M3 12 H21" stroke={color} strokeWidth={2} strokeLinecap="round" />
+        </Svg>
+      )
+    case 'shot':
+      return (
+        <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24">
+          <SvgPath d="M3 9.5 H21" stroke={color} strokeWidth={2} strokeLinecap="round" />
+          <SvgPath d="M3 14.5 H21" stroke={color} strokeWidth={2} strokeLinecap="round" />
+        </Svg>
+      )
+    case 'run':
+      return (
+        <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24">
+          <SvgPath d="M3 12 H21" stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray="4 3.5" />
+        </Svg>
+      )
+    case 'dribble':
+      return (
+        <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24">
+          <SvgPath
+            d="M2 12 Q6 6 10 12 T18 12 T24 12"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            fill="none"
+          />
+        </Svg>
+      )
+  }
+}
+
+function isPlaceToolActive(activeTool: CanvasTool, tool: PlaceableToolType): boolean {
+  return activeTool.kind === 'place' && activeTool.type === tool
+}
+
+function isDrawToolActive(activeTool: CanvasTool, type: ArrowType): boolean {
+  return activeTool.kind === 'draw' && activeTool.type === type
+}
+
 export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
   const [playerFlyoutOpen, setPlayerFlyoutOpen] = useState(false)
-  const isPlayerToolActive = PLAYER_PRESETS.some((preset) => preset.tool === activeTool)
+  const isPlayerToolActive = PLAYER_PRESETS.some((preset) => isPlaceToolActive(activeTool, preset.tool))
 
   return (
     <View style={styles.wrapper}>
@@ -88,12 +145,12 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
               key={preset.tool}
               accessibilityLabel={preset.label || 'Blank player marker'}
               onPress={() => {
-                onSelectTool(preset.tool)
+                onSelectTool({ kind: 'place', type: preset.tool })
                 setPlayerFlyoutOpen(false)
               }}
               style={styles.flyoutButton}
             >
-              <View style={[styles.markerPreview, activeTool === preset.tool && styles.markerPreviewActive]}>
+              <View style={[styles.markerPreview, isPlaceToolActive(activeTool, preset.tool) && styles.markerPreviewActive]}>
                 <Text style={styles.markerPreviewLabel}>{preset.label}</Text>
               </View>
             </Pressable>
@@ -111,18 +168,35 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
         </Pressable>
 
         {EQUIPMENT_TOOLS.map(({ tool, label }) => {
-          const selected = activeTool === tool
+          const selected = isPlaceToolActive(activeTool, tool)
           return (
             <Pressable
               key={tool}
               accessibilityLabel={label}
               onPress={() => {
                 setPlayerFlyoutOpen(false)
-                onSelectTool(tool)
+                onSelectTool({ kind: 'place', type: tool })
               }}
               style={[styles.toolButton, selected && styles.toolButtonSelected]}
             >
               <ToolIcon tool={tool} selected={selected} />
+            </Pressable>
+          )
+        })}
+
+        {ARROW_TOOLS.map(({ type, label }) => {
+          const selected = isDrawToolActive(activeTool, type)
+          return (
+            <Pressable
+              key={type}
+              accessibilityLabel={label}
+              onPress={() => {
+                setPlayerFlyoutOpen(false)
+                onSelectTool({ kind: 'draw', type })
+              }}
+              style={[styles.toolButton, selected && styles.toolButtonSelected]}
+            >
+              <ArrowToolIcon type={type} selected={selected} />
             </Pressable>
           )
         })}
