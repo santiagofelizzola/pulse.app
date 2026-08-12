@@ -83,7 +83,6 @@ export function useCanvasGestures({
   onMoveArrow,
 }: UseCanvasGesturesArgs) {
   const interaction = useSharedValue<InteractionState>(IDLE_STATE)
-  const startPoint = useSharedValue({ x: 0, y: 0 })
   const startObjectPoint = useSharedValue({ x: 0, y: 0 })
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const targetScaleRef = useSharedValue(1)
@@ -98,8 +97,6 @@ export function useCanvasGestures({
     .maxPointers(1)
     .minDistance(0)
     .onBegin((event) => {
-      startPoint.value = { x: event.x, y: event.y }
-
       // Handles on the current selection take priority over anything else. `selected` is only
       // ever non-null while tool.kind === 'select' (place/draw tools clear it on arming), so
       // this is a no-op while a placement/draw tool is active.
@@ -186,6 +183,19 @@ export function useCanvasGestures({
           drawCurrent: { x: event.x, y: event.y },
         }
         runOnJS(beginInteracting)()
+      } else if (tool.kind === 'place') {
+        // Fire on touch-down, same as the object-selection branches above, rather than waiting
+        // for onEnd: a Pan gesture's onEnd is not reliably called for a near-instantaneous tap
+        // (no intermediate touch-moved sample for the recognizer to latch onto), which is what
+        // made placement silently require a held-down "long press" to register. Selection above
+        // never had this problem because it already commits from onBegin.
+        if (canvasSize.width > 0 && canvasSize.height > 0) {
+          const nx = event.x / canvasSize.width
+          const ny = event.y / canvasSize.height
+          runOnJS(onPlace)(tool.type, nx, ny)
+        }
+      } else if (tool.kind === 'select') {
+        runOnJS(onSelect)(null)
       }
     })
     .onUpdate((event) => {
@@ -229,15 +239,9 @@ export function useCanvasGestures({
           const cp2 = { x: start.x + ((end.x - start.x) * 2) / 3, y: start.y + ((end.y - start.y) * 2) / 3 }
           runOnJS(onDrawArrow)(current.drawType, [start, cp1, cp2, end])
         }
-      } else if (current.mode === 'idle') {
-        if (tool.kind === 'place' && travel < TAP_SLOP && canvasSize.width > 0 && canvasSize.height > 0) {
-          const nx = startPoint.value.x / canvasSize.width
-          const ny = startPoint.value.y / canvasSize.height
-          runOnJS(onPlace)(tool.type, nx, ny)
-        } else if (tool.kind === 'select' && travel < TAP_SLOP) {
-          runOnJS(onSelect)(null)
-        }
       }
+      // mode === 'idle' (place/deselect on empty canvas) is handled in onBegin, not here — see
+      // the comment there for why onEnd can't be trusted to fire for a quick tap.
 
       interaction.value = IDLE_STATE
       runOnJS(endInteracting)()

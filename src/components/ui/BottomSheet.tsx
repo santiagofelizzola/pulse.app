@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -57,7 +57,7 @@ export function BottomSheet({ visible, onClose, title, children }: BottomSheetPr
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={dismiss}>
-      <View style={styles.root}>
+      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
           <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={dismiss} hitSlop={layout.hitSlop} />
         </Animated.View>
@@ -68,7 +68,7 @@ export function BottomSheet({ visible, onClose, title, children }: BottomSheetPr
             {children}
           </Animated.View>
         </GestureDetector>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

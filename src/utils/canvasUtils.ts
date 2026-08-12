@@ -308,8 +308,14 @@ export function getArrowScreenBounds(points: { x: number; y: number }[], canvasS
   return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) }
 }
 
-export function createDefaultObject(tool: PlaceableToolType, x: number, y: number, canvasSize: CanvasSize): PlacedObject {
-  const base = { id: randomUUID(), x, y, rotation: 0, scale: 1 }
+export function createDefaultObject(
+  tool: PlaceableToolType,
+  x: number,
+  y: number,
+  canvasSize: CanvasSize,
+  zIndex: number
+): PlacedObject {
+  const base = { id: randomUUID(), x, y, rotation: 0, scale: 1, zIndex }
 
   switch (tool) {
     case 'player-blank':

@@ -47,6 +47,15 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
+// Objects and arrows paint in a single shared stacking order (design.md's "Layering" intent),
+// even though they live in two separate arrays — so "bring to front" on a line can actually
+// place it above equipment, not just reorder it among other lines. Computed from current state
+// rather than a persisted counter, so it needs no separate undo/redo bookkeeping of its own.
+function nextZIndex(state: Pick<CanvasStoreState, 'objects' | 'arrows'>): number {
+  const max = Math.max(0, ...state.objects.map((o) => o.zIndex ?? 0), ...state.arrows.map((a) => a.zIndex ?? 0))
+  return max + 1
+}
+
 export type SelectedItem = { kind: 'object'; object: PlacedObject } | { kind: 'arrow'; arrow: Arrow } | null
 
 // Pure function of state so it can be used directly as a zustand selector.
@@ -143,8 +152,9 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
     selectItem: (id) => set({ selectedId: id }),
 
     placeObject: (tool, x, y, canvasSize) => {
-      const object = createDefaultObject(tool, x, y, canvasSize)
-      commit({ objects: [...get().objects, object] })
+      const state = get()
+      const object = createDefaultObject(tool, x, y, canvasSize, nextZIndex(state))
+      commit({ objects: [...state.objects, object] })
     },
 
     moveObject: (id, x, y) => {
@@ -160,8 +170,9 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
     },
 
     addArrow: (type, points) => {
-      const arrow: Arrow = { id: randomUUID(), type, points }
-      commit({ arrows: [...get().arrows, arrow] })
+      const state = get()
+      const arrow: Arrow = { id: randomUUID(), type, points, zIndex: nextZIndex(state) }
+      commit({ arrows: [...state.arrows, arrow] })
       // Auto-disarm back to select mode so the very next touch moves/selects the arrow just
       // drawn, rather than reading as the start of another one — drawing-then-immediately-
       // adjusting is the common case, unlike equipment tools where re-placing several of the
@@ -190,6 +201,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
           id: randomUUID(),
           x: clamp01(selected.object.x + DUPLICATE_OFFSET),
           y: clamp01(selected.object.y + DUPLICATE_OFFSET),
+          zIndex: nextZIndex(state),
         }
         commit({ objects: [...state.objects, copy] })
         set({ selectedId: copy.id })
@@ -201,6 +213,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
             x: clamp01(point.x + DUPLICATE_OFFSET),
             y: clamp01(point.y + DUPLICATE_OFFSET),
           })),
+          zIndex: nextZIndex(state),
         }
         commit({ arrows: [...state.arrows, copy] })
         set({ selectedId: copy.id })
@@ -212,12 +225,15 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       const selected = getSelectedItem(state)
       if (!selected) return
 
+      const zIndex = nextZIndex(state)
       if (selected.kind === 'object') {
-        const rest = state.objects.filter((object) => object.id !== selected.object.id)
-        commit({ objects: [...rest, selected.object] })
+        commit({
+          objects: state.objects.map((object) => (object.id === selected.object.id ? { ...object, zIndex } : object)),
+        })
       } else {
-        const rest = state.arrows.filter((arrow) => arrow.id !== selected.arrow.id)
-        commit({ arrows: [...rest, selected.arrow] })
+        commit({
+          arrows: state.arrows.map((arrow) => (arrow.id === selected.arrow.id ? { ...arrow, zIndex } : arrow)),
+        })
       }
     },
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigation } from '@react-navigation/native'
 import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import { GestureDetector } from 'react-native-gesture-handler'
@@ -7,14 +7,14 @@ import { LayoutGrid, Redo2, Save, Undo2, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { activityRepository } from '../../db/repositories/activityRepository'
-import { canvas, colors, layout, spacing, typography } from '../../theme/theme'
+import { colors, layout, spacing, typography } from '../../theme/theme'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
 import type { PlaceableToolType } from '../../store/canvasStore'
 import type { ActivityTag, CanvasBackground, CanvasData, PlacedObject, PlayerMarker } from '../../types'
 import { ArrowDrawPreview, ArrowPath } from './components/ArrowPath'
 import { BackgroundPicker } from './components/BackgroundPicker'
 import { CanvasObject } from './components/CanvasObject'
-import { PitchBackground } from './components/PitchBackground'
+import { getPitchAspectRatio, PitchBackground } from './components/PitchBackground'
 import { PlayerMarkerOverlay } from './components/PlayerMarkerOverlay'
 import { SaveSheet } from './components/SaveSheet'
 import { SelectionOverlay } from './components/SelectionOverlay'
@@ -96,16 +96,20 @@ export default function CanvasScreen() {
     setAreaSize({ width, height })
   }, [])
 
-  // Fit the pitch (canvas.pitchAspectRatio) into the middle flex area, centered, so it's never
-  // stretched and never overlaps the top bar or tool tray (both sit outside this area now).
+  // Fit the pitch into the middle flex area, centered, so it's never stretched and never
+  // overlaps the top bar or tool tray (both sit outside this area now). The aspect ratio varies
+  // by background — a half-pitch or zoomed-box crop shows less of the pitch's length than a
+  // full pitch, so its frame is shorter for the same width rather than stretched into the same
+  // tall shape with empty grass below (see PitchBackground's getPitchAspectRatio).
+  const aspectRatio = getPitchAspectRatio(background)
   const availableWidth = Math.max(areaSize.width - CANVAS_MARGIN * 2, 0)
   const availableHeight = Math.max(areaSize.height - CANVAS_MARGIN * 2, 0)
 
   let canvasWidth = availableWidth
-  let canvasHeight = canvasWidth / canvas.pitchAspectRatio
+  let canvasHeight = canvasWidth / aspectRatio
   if (canvasHeight > availableHeight && availableHeight > 0) {
     canvasHeight = availableHeight
-    canvasWidth = canvasHeight * canvas.pitchAspectRatio
+    canvasWidth = canvasHeight * aspectRatio
   }
 
   const canvasSize = { width: canvasWidth, height: canvasHeight }
@@ -168,6 +172,24 @@ export default function CanvasScreen() {
   const otherObjects = objects.filter((object): object is Exclude<PlacedObject, PlayerMarker> => !isPlayerMarker(object))
   const isCanvasEmpty = objects.length === 0 && arrows.length === 0
 
+  // Arrows and equipment paint in one shared stacking order (design.md's "Layering" intent) so
+  // bring-to-front on a line can actually rise above equipment, not just reorder among lines.
+  // Player markers are excluded — they always render via the RN overlay below, on top of
+  // everything in the Skia canvas regardless of zIndex, which is an unrelated, pre-existing
+  // constraint of how their text labels are drawn.
+  const paintOrder = useMemo(() => {
+    const items: Array<{ kind: 'arrow'; arrow: (typeof arrows)[number] } | { kind: 'object'; object: (typeof otherObjects)[number] }> = [
+      ...arrows.map((arrow) => ({ kind: 'arrow' as const, arrow })),
+      ...otherObjects.map((object) => ({ kind: 'object' as const, object })),
+    ]
+    return items.sort((a, b) => {
+      const za = a.kind === 'arrow' ? a.arrow.zIndex : a.object.zIndex
+      const zb = b.kind === 'arrow' ? b.arrow.zIndex : b.object.zIndex
+      return za - zb
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrows, otherObjects])
+
   return (
     <View style={styles.container}>
       <View style={[styles.topBar, { paddingTop: insets.top }]}>
@@ -203,18 +225,19 @@ export default function CanvasScreen() {
               <View ref={canvasBoxRef} style={[styles.canvasBox, StyleSheet.absoluteFill]}>
                 <Canvas style={StyleSheet.absoluteFill}>
                   <PitchBackground background={background} width={canvasWidth} height={canvasHeight} />
-                  {arrows.map((arrow) => (
-                    <ArrowPath
-                      key={arrow.id}
-                      arrow={arrow}
-                      canvasSize={canvasSize}
-                      isSelected={selected?.kind === 'arrow' && selected.arrow.id === arrow.id}
-                      interaction={interaction}
-                    />
-                  ))}
-                  {otherObjects.map((object) => (
-                    <CanvasObject key={object.id} object={object} canvasSize={canvasSize} interaction={interaction} />
-                  ))}
+                  {paintOrder.map((item) =>
+                    item.kind === 'arrow' ? (
+                      <ArrowPath
+                        key={item.arrow.id}
+                        arrow={item.arrow}
+                        canvasSize={canvasSize}
+                        isSelected={selected?.kind === 'arrow' && selected.arrow.id === item.arrow.id}
+                        interaction={interaction}
+                      />
+                    ) : (
+                      <CanvasObject key={item.object.id} object={item.object} canvasSize={canvasSize} interaction={interaction} />
+                    )
+                  )}
                   {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
                 </Canvas>
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">

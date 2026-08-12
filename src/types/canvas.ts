@@ -11,6 +11,10 @@ export interface BaseCanvasObject {
   y: number
   rotation: number
   scale: number
+  // Paint order relative to every other object AND arrow (a single shared counter, not just
+  // within this array) — lets "bring to front" move an object above arrows and vice versa.
+  // See canvasStore.ts's nextZIndex.
+  zIndex: number
 }
 
 export interface PlayerMarker extends BaseCanvasObject {
@@ -54,6 +58,7 @@ export interface Arrow {
   id: string
   type: ArrowType
   points: { x: number; y: number }[]  // cubic bezier: start, cp1, cp2, end
+  zIndex: number
 }
 
 export interface CanvasData {

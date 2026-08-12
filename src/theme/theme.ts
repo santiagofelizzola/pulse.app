@@ -100,10 +100,8 @@ export const canvas = {
   // so pitch markings stay proportionally correct instead of stretching to fill the screen.
   pitchAspectRatio: 68 / 105,
   line: {
-    strokeWidth: 2.5,
-    // Bumped from the original 3 — at 2.5 stroke width, a 3px center gap left the two strands'
-    // inner edges only ~0.5px apart, reading as one thick line rather than a distinct double line.
-    doubleGap: 5,
+    strokeWidth: 2.0,
+    doubleGap: 3,
     dash: [8, 6],
     waveAmplitude: 5,
     waveLength: 16,
