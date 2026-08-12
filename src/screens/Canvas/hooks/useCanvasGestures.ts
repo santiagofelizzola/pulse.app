@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Gesture } from 'react-native-gesture-handler'
 import { runOnJS, useSharedValue } from 'react-native-reanimated'
 
@@ -35,6 +35,12 @@ export interface InteractionState {
   placeShapeType: ShapeToolType | null
   drawStart: { x: number; y: number }
   drawCurrent: { x: number; y: number }
+  // Bumped every onBegin. A commit (move/rotate/scale/resize) freezes `interaction` at its
+  // final value instead of resetting to idle in onEnd — the reset waits for the committed
+  // objects/arrows props to actually land (see the useEffect below) so the render never has a
+  // frame where it falls back to the pre-drag prop position. `seq` lets that effect confirm
+  // it's still clearing the gesture it was waiting for, not a newer one that started since.
+  seq: number
 }
 
 const IDLE_STATE: InteractionState = {
@@ -51,6 +57,7 @@ const IDLE_STATE: InteractionState = {
   placeShapeType: null,
   drawStart: { x: 0, y: 0 },
   drawCurrent: { x: 0, y: 0 },
+  seq: 0,
 }
 
 // Below this drag distance, a draw-tool or shape-placement gesture is treated as an accidental
@@ -99,6 +106,7 @@ export function useCanvasGestures({
   const startObjectPoint = useSharedValue({ x: 0, y: 0 })
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const targetScaleRef = useSharedValue(1)
+  const interactionSeq = useSharedValue(0)
   // Object rotation captured at the start of a 'resize' drag — width/height changes come from
   // the drag point projected into the object's *local* (unrotated) axes, so the rotation used
   // for that projection must stay fixed for the gesture's duration, same reasoning as
@@ -111,10 +119,54 @@ export function useCanvasGestures({
   const beginInteracting = () => setIsInteracting(true)
   const endInteracting = () => setIsInteracting(false)
 
+  // Set (with the committing gesture's `seq`) right before the store mutation that will make
+  // the commit's final position show up in `objects`/`arrows` props — see the effect below,
+  // which is what actually clears `interaction` once that prop update lands.
+  const pendingClearSeq = useRef<number | null>(null)
+
+  const commitMove = (seq: number, id: string, x: number, y: number) => {
+    pendingClearSeq.current = seq
+    onMoveObject(id, x, y)
+  }
+  const commitMoveArrow = (seq: number, id: string, dx: number, dy: number) => {
+    pendingClearSeq.current = seq
+    onMoveArrow(id, dx, dy)
+  }
+  const commitRotate = (seq: number, id: string, rotation: number) => {
+    pendingClearSeq.current = seq
+    onRotateObject(id, rotation)
+  }
+  const commitScale = (seq: number, id: string, scale: number) => {
+    pendingClearSeq.current = seq
+    onScaleObject(id, scale)
+  }
+  const commitResize = (seq: number, id: string, width: number, height: number) => {
+    pendingClearSeq.current = seq
+    onResizeObject(id, width, height)
+  }
+
+  // Fires once `objects`/`arrows` actually reflect the pending commit (i.e. after the store
+  // update has propagated back through React), so the live-drag transform can hand off to the
+  // committed-prop transform with no frame in between showing the pre-drag position.
+  useEffect(() => {
+    if (pendingClearSeq.current !== null && interaction.value.seq === pendingClearSeq.current) {
+      interaction.value = IDLE_STATE
+      pendingClearSeq.current = null
+      setIsInteracting(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objects, arrows])
+
   const pan = Gesture.Pan()
     .maxPointers(1)
     .minDistance(0)
     .onBegin((event) => {
+      // Every gesture lifecycle gets its own seq so a commit's deferred interaction-clear (see
+      // the useEffect above) can tell "the commit I'm waiting on landed" apart from "a new
+      // gesture already started since."
+      interactionSeq.value += 1
+      const seq = interactionSeq.value
+
       // Handles on the current selection take priority over anything else. `selected` is only
       // ever non-null while tool.kind === 'select' (place/draw tools clear it on arming), so
       // this is a no-op while a placement/draw tool is active.
@@ -129,7 +181,7 @@ export function useCanvasGestures({
         const rotateHandle = rotatePointAround({ x: 0, y: -halfH - ROTATE_HANDLE_GAP }, object.rotation, cx, cy)
         if (Math.hypot(event.x - rotateHandle.x, event.y - rotateHandle.y) <= HANDLE_HIT_RADIUS) {
           targetCenter.value = { x: cx, y: cy }
-          interaction.value = { ...IDLE_STATE, mode: 'rotate', targetId: object.id, targetKind: 'object', rotation: object.rotation }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'rotate', targetId: object.id, targetKind: 'object', rotation: object.rotation }
           runOnJS(beginInteracting)()
           return
         }
@@ -144,6 +196,7 @@ export function useCanvasGestures({
             resizeRotationRef.value = object.rotation
             interaction.value = {
               ...IDLE_STATE,
+              seq,
               mode: 'resize',
               targetId: object.id,
               targetKind: 'object',
@@ -152,7 +205,7 @@ export function useCanvasGestures({
             }
           } else {
             targetScaleRef.value = Math.hypot(footprint.width / 2, footprint.height / 2)
-            interaction.value = { ...IDLE_STATE, mode: 'scale', targetId: object.id, targetKind: 'object', scale: object.scale }
+            interaction.value = { ...IDLE_STATE, seq, mode: 'scale', targetId: object.id, targetKind: 'object', scale: object.scale }
           }
           runOnJS(beginInteracting)()
           return
@@ -168,7 +221,7 @@ export function useCanvasGestures({
         const py = object.y * canvasSize.height
         if (Math.hypot(event.x - px, event.y - py) <= HIT_RADIUS * object.scale) {
           startObjectPoint.value = { x: px, y: py }
-          interaction.value = { ...IDLE_STATE, mode: 'move', targetId: object.id, targetKind: 'object' }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object' }
           runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
@@ -189,7 +242,7 @@ export function useCanvasGestures({
           const px = object.x * canvasSize.width
           const py = object.y * canvasSize.height
           startObjectPoint.value = { x: px, y: py }
-          interaction.value = { ...IDLE_STATE, mode: 'move', targetId: object.id, targetKind: 'object' }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object' }
           runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
@@ -203,7 +256,7 @@ export function useCanvasGestures({
           y: point.y * canvasSize.height,
         }))
         if (distanceToCubicBezier({ x: event.x, y: event.y }, p0, p1, p2, p3) <= canvas.line.hitInflate) {
-          interaction.value = { ...IDLE_STATE, mode: 'move', targetId: arrow.id, targetKind: 'arrow' }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: arrow.id, targetKind: 'arrow' }
           runOnJS(onSelect)(arrow.id)
           runOnJS(beginInteracting)()
           return
@@ -284,6 +337,13 @@ export function useCanvasGestures({
     .onEnd((event) => {
       const current = interaction.value
       const travel = Math.hypot(event.translationX, event.translationY)
+      // Set true for move/rotate/scale/resize commits — those leave `interaction` frozen at its
+      // final value instead of resetting here, so the render keeps showing the live (correct)
+      // position until the committed objects/arrows props land and the effect above clears it.
+      // Without this, resetting synchronously here makes the transform fall back to the
+      // still-stale `object.x/y` prop for a frame, which is the flicker back to the pre-drag
+      // position that this whole seq/effect mechanism exists to avoid.
+      let deferClear = false
 
       // A near-zero-travel "move" is really just the selection tap from onBegin — skip the
       // commit so tapping an object to select it doesn't push a no-op entry onto undo history.
@@ -291,17 +351,27 @@ export function useCanvasGestures({
         if (current.targetKind === 'object' && canvasSize.width > 0 && canvasSize.height > 0) {
           const finalX = (startObjectPoint.value.x + event.translationX) / canvasSize.width
           const finalY = (startObjectPoint.value.y + event.translationY) / canvasSize.height
-          runOnJS(onMoveObject)(current.targetId, Math.min(1, Math.max(0, finalX)), Math.min(1, Math.max(0, finalY)))
+          runOnJS(commitMove)(current.seq, current.targetId, Math.min(1, Math.max(0, finalX)), Math.min(1, Math.max(0, finalY)))
+          deferClear = true
         } else if (current.targetKind === 'arrow' && canvasSize.width > 0 && canvasSize.height > 0) {
-          runOnJS(onMoveArrow)(current.targetId, event.translationX / canvasSize.width, event.translationY / canvasSize.height)
+          runOnJS(commitMoveArrow)(
+            current.seq,
+            current.targetId,
+            event.translationX / canvasSize.width,
+            event.translationY / canvasSize.height
+          )
+          deferClear = true
         }
       } else if (current.mode === 'rotate' && current.targetId && travel >= TAP_SLOP) {
-        runOnJS(onRotateObject)(current.targetId, current.rotation)
+        runOnJS(commitRotate)(current.seq, current.targetId, current.rotation)
+        deferClear = true
       } else if (current.mode === 'scale' && current.targetId && travel >= TAP_SLOP) {
-        runOnJS(onScaleObject)(current.targetId, current.scale)
+        runOnJS(commitScale)(current.seq, current.targetId, current.scale)
+        deferClear = true
       } else if (current.mode === 'resize' && current.targetId && travel >= TAP_SLOP) {
         if (canvasSize.width > 0 && canvasSize.height > 0) {
-          runOnJS(onResizeObject)(current.targetId, current.resizeWidth / canvasSize.width, current.resizeHeight / canvasSize.height)
+          runOnJS(commitResize)(current.seq, current.targetId, current.resizeWidth / canvasSize.width, current.resizeHeight / canvasSize.height)
+          deferClear = true
         }
       } else if (current.mode === 'drawArrow' && current.drawType) {
         if (travel >= MIN_ARROW_LENGTH && canvasSize.width > 0 && canvasSize.height > 0) {
@@ -321,8 +391,10 @@ export function useCanvasGestures({
       // mode === 'idle' (place/deselect on empty canvas) is handled in onBegin, not here — see
       // the comment there for why onEnd can't be trusted to fire for a quick tap.
 
-      interaction.value = IDLE_STATE
-      runOnJS(endInteracting)()
+      if (!deferClear) {
+        interaction.value = IDLE_STATE
+        runOnJS(endInteracting)()
+      }
     })
     .onFinalize((_event, success) => {
       if (!success) {
