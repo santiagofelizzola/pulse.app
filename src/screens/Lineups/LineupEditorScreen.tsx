@@ -1,26 +1,275 @@
-import { useNavigation } from '@react-navigation/native'
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
+import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Canvas } from '@shopify/react-native-skia'
+import { Eye, EyeOff, LayoutGrid, Save, X } from 'lucide-react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { colors, spacing, typography, layout } from '../../theme/theme'
+import { getPitchAspectRatio, PitchBackground } from '../Canvas/components/PitchBackground'
+import { lineupRepository } from '../../db/repositories/lineupRepository'
+import type { RootStackParamList } from '../../navigation/types'
+import { colors, layout, spacing, typography } from '../../theme/theme'
+import { getFormationSlots } from '../../utils/formationSlots'
+import type { CreateLineupInput, Formation, LineupPosition, SquadSize } from '../../types'
+import { FormationPicker } from './components/FormationPicker'
+import { LineupMarker } from './components/LineupMarker'
+import { LineupSaveSheet } from './components/LineupSaveSheet'
+import { PositionEditSheet } from './components/PositionEditSheet'
+import { SquadSizePicker } from './components/SquadSizePicker'
+
+type Route = RouteProp<RootStackParamList, 'LineupEditor'>
+
+// Breathing room around the pitch within its flex:1 area — mirrors CanvasScreen's CANVAS_MARGIN
+// so the lineup pitch reads at the same visual scale as the drawing canvas.
+const CANVAS_MARGIN = spacing.lg
 
 export default function LineupEditorScreen() {
   const navigation = useNavigation()
+  const { params } = useRoute<Route>()
+  const lineupId = params?.lineupId
+  const insets = useSafeAreaInsets()
+
+  const [phase, setPhase] = useState<'squad-size' | 'pitch'>(lineupId ? 'pitch' : 'squad-size')
+  const [squadSize, setSquadSize] = useState<SquadSize | null>(null)
+  const [formation, setFormation] = useState<Formation | null>(null)
+  const [positions, setPositions] = useState<LineupPosition[]>([])
+  const [name, setName] = useState('')
+  const [showRoleLabels, setShowRoleLabels] = useState(true)
+
+  const [formationPickerOpen, setFormationPickerOpen] = useState(false)
+  const [editingPosition, setEditingPosition] = useState<LineupPosition | null>(null)
+  const [saveSheetOpen, setSaveSheetOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [areaSize, setAreaSize] = useState({ width: 0, height: 0 })
+
+  // Read inside the beforeRemove listener instead of the closured state — mirrors CanvasScreen's
+  // savedAtHistoryIndex check, avoiding a stale closure when a save flow calls navigation.goBack()
+  // in the same tick as clearing the dirty flag, before this effect has re-subscribed.
+  const dirtyRef = useRef(false)
+
+  useEffect(() => {
+    if (!lineupId) return
+    lineupRepository.getById(lineupId).then((loaded) => {
+      if (!loaded) return
+      setSquadSize(loaded.squadSize)
+      setFormation(loaded.formation ?? null)
+      setPositions(loaded.positions)
+      setName(loaded.name)
+      setShowRoleLabels(loaded.showRoleLabels ?? true)
+      setPhase('pitch')
+    })
+  }, [lineupId])
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (event) => {
+      if (!dirtyRef.current) return
+      event.preventDefault()
+      Alert.alert('Discard changes?', undefined, [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(event.data.action) },
+      ])
+    })
+    return unsubscribe
+  }, [navigation])
+
+  const handleAreaLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout
+    setAreaSize({ width, height })
+  }, [])
+
+  const aspectRatio = getPitchAspectRatio('full-pitch')
+  const availableWidth = Math.max(areaSize.width - CANVAS_MARGIN * 2, 0)
+  const availableHeight = Math.max(areaSize.height - CANVAS_MARGIN * 2, 0)
+  let canvasWidth = availableWidth
+  let canvasHeight = canvasWidth / aspectRatio
+  if (canvasHeight > availableHeight && availableHeight > 0) {
+    canvasHeight = availableHeight
+    canvasWidth = canvasHeight * aspectRatio
+  }
+  const canvasSize = { width: canvasWidth, height: canvasHeight }
+
+  const handleSelectSquadSize = useCallback((size: SquadSize) => {
+    setSquadSize(size)
+    setFormation(null)
+    setPositions([])
+    dirtyRef.current = true
+    setPhase('pitch')
+    setFormationPickerOpen(true)
+  }, [])
+
+  const handleChangeSquadSizePress = useCallback(() => {
+    if (positions.length === 0) {
+      setPhase('squad-size')
+      return
+    }
+    Alert.alert('Change squad size?', 'This will discard the current player positions.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Change', style: 'destructive', onPress: () => setPhase('squad-size') },
+    ])
+  }, [positions.length])
+
+  const handleSelectFormation = useCallback(
+    (next: Formation) => {
+      if (!squadSize) return
+      setFormation(next)
+      setPositions(getFormationSlots(squadSize, next))
+      dirtyRef.current = true
+    },
+    [squadSize]
+  )
+
+  const handleMove = useCallback((id: string, x: number, y: number) => {
+    setPositions((prev) => prev.map((position) => (position.id === id ? { ...position, x, y } : position)))
+    dirtyRef.current = true
+  }, [])
+
+  const handleMarkerPress = useCallback(
+    (id: string) => {
+      setEditingPosition(positions.find((position) => position.id === id) ?? null)
+    },
+    [positions]
+  )
+
+  const handleSavePosition = useCallback(
+    (patch: { role?: string; label: string }) => {
+      if (!editingPosition) return
+      setPositions((prev) => prev.map((position) => (position.id === editingPosition.id ? { ...position, ...patch } : position)))
+      dirtyRef.current = true
+    },
+    [editingPosition]
+  )
+
+  const handleToggleRoleLabels = useCallback(() => {
+    setShowRoleLabels((prev) => !prev)
+    dirtyRef.current = true
+  }, [])
+
+  const handleSave = useCallback(
+    async (trimmedName: string) => {
+      if (!squadSize) return
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const input: CreateLineupInput = {
+          name: trimmedName,
+          squadSize,
+          formation: formation ?? undefined,
+          positions,
+          showRoleLabels,
+        }
+        if (lineupId) {
+          await lineupRepository.update(lineupId, input)
+        } else {
+          await lineupRepository.create(input)
+        }
+        dirtyRef.current = false
+        setSaveSheetOpen(false)
+        navigation.goBack()
+      } catch {
+        setSaveError('Could not save. Try again.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [squadSize, formation, positions, showRoleLabels, lineupId, navigation]
+  )
+
+  const isPitchEmpty = positions.length === 0
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={layout.hitSlop}
-          style={styles.backButton}
-        >
-          <Text style={styles.backLabel}>Close</Text>
+      <View style={[styles.topBar, { paddingTop: insets.top }]}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+          <X size={22} color={colors.textPrimary} />
         </Pressable>
-      </SafeAreaView>
-      <View style={styles.content}>
-        <Text style={styles.title}>Lineup Editor</Text>
-        <Text style={styles.body}>Squad size, formations, and player markers arrive in Session 5.</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {name || 'New Lineup'}
+        </Text>
+        <View style={styles.topBarActions}>
+          {squadSize ? (
+            <>
+              <Pressable onPress={handleChangeSquadSizePress} hitSlop={layout.hitSlop} style={styles.squadSizeButton}>
+                <Text style={styles.squadSizeLabel}>
+                  {squadSize}v{squadSize}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setFormationPickerOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+                <LayoutGrid size={22} color={colors.textPrimary} />
+              </Pressable>
+              <Pressable onPress={handleToggleRoleLabels} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+                {showRoleLabels ? (
+                  <Eye size={22} color={colors.textPrimary} />
+                ) : (
+                  <EyeOff size={22} color={colors.textPrimary} />
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => setSaveSheetOpen(true)}
+                disabled={isPitchEmpty}
+                hitSlop={layout.hitSlop}
+                style={styles.topBarButton}
+              >
+                <Save size={22} color={isPitchEmpty ? colors.textDisabled : colors.textPrimary} />
+              </Pressable>
+            </>
+          ) : null}
+        </View>
       </View>
+
+      {phase === 'squad-size' ? (
+        <SquadSizePicker onSelect={handleSelectSquadSize} />
+      ) : (
+        <View style={styles.canvasArea} onLayout={handleAreaLayout}>
+          {canvasWidth > 0 && canvasHeight > 0 ? (
+            <View style={{ width: canvasWidth, height: canvasHeight }}>
+              <View style={[styles.canvasBox, StyleSheet.absoluteFill]}>
+                <Canvas style={StyleSheet.absoluteFill}>
+                  <PitchBackground background="full-pitch" width={canvasWidth} height={canvasHeight} />
+                </Canvas>
+                <View style={StyleSheet.absoluteFill}>
+                  {positions.map((position) => (
+                    <LineupMarker
+                      key={position.id}
+                      position={position}
+                      canvasSize={canvasSize}
+                      showRole={showRoleLabels}
+                      onMove={handleMove}
+                      onPress={handleMarkerPress}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      )}
+
+      {squadSize ? (
+        <FormationPicker
+          visible={formationPickerOpen}
+          squadSize={squadSize}
+          selected={formation ?? undefined}
+          onSelect={handleSelectFormation}
+          onClose={() => setFormationPickerOpen(false)}
+        />
+      ) : null}
+
+      <PositionEditSheet
+        visible={editingPosition !== null}
+        position={editingPosition}
+        onClose={() => setEditingPosition(null)}
+        onSave={handleSavePosition}
+      />
+
+      <LineupSaveSheet
+        visible={saveSheetOpen}
+        initialName={name}
+        saving={saving}
+        error={saveError}
+        onClose={() => setSaveSheetOpen(false)}
+        onSave={handleSave}
+      />
     </View>
   )
 }
@@ -28,34 +277,52 @@ export default function LineupEditorScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.canvasInk,
+    backgroundColor: colors.background,
   },
   topBar: {
-    backgroundColor: colors.overlayBar,
-  },
-  backButton: {
-    height: layout.touchTarget,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
     paddingHorizontal: layout.screenPaddingX,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+  },
+  topBarButton: {
+    height: layout.touchTarget,
+    width: layout.touchTarget,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  backLabel: {
-    ...typography.body,
-    color: colors.textInverse,
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  content: {
+  squadSizeButton: {
+    height: layout.touchTarget,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  squadSizeLabel: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  title: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    flex: 1,
+    marginHorizontal: spacing.sm,
+  },
+  canvasArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: layout.screenPaddingX,
   },
-  title: {
-    ...typography.h1,
-    color: colors.textInverse,
-    marginBottom: spacing.sm,
-  },
-  body: {
-    ...typography.callout,
-    color: colors.textInverse,
-    textAlign: 'center',
+  canvasBox: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.canvasInk,
   },
 })

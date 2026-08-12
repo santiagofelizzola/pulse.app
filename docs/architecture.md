@@ -307,16 +307,17 @@ export type SquadSize = 7 | 9 | 11
 
 // Formation values are only meaningful together with squadSize —
 // e.g. '3-2-3' at 9v9 is a different shape than any 11-a-side formation.
-// Each squad size ships exactly 3 named formations + 'custom'.
+// Each squad size ships exactly 3 named formations + 'custom'. Every named formation's numbers
+// sum to squadSize - 1 (the remaining player is the goalkeeper, not counted in the string).
 export type Formation7 = '2-3-1' | '3-2-1' | '3-1-2' | 'custom'
-export type Formation9 = '3-3-2' | '3-2-3' | '3-1-3-1' | 'custom'
-export type Formation11 = '4-4-2' | '4-3-3' | '4-2-3-1' | 'custom'
+export type Formation9 = '3-4-1' | '2-5-1' | '3-2-3' | 'custom'
+export type Formation11 = '4-3-3' | '4-4-2' | '3-5-2' | 'custom'
 export type Formation = Formation7 | Formation9 | Formation11
 
 export interface LineupPosition {
   id: string
-  label: string              // player name or 1–2 char initials
-  role?: string              // optional slot label (GK, CB, ST, …)
+  label: string              // player name or 1–2 char initials, shown BELOW the marker
+  role?: string              // positional slot abbreviation (GK, CB, ST, …), shown INSIDE the marker
   x: number                  // normalized 0..1 across the pitch
   y: number                  // normalized 0..1 down the pitch
 }
@@ -324,11 +325,12 @@ export interface LineupPosition {
 export interface Lineup {
   id: string                 // device-generated uuid
   name: string
-  matchDate?: string         // ISO date of the fixture
+  matchDate?: string         // ISO date of the fixture (optional, not surfaced in the editor UI)
   squadSize: SquadSize
   formation?: Formation      // must be valid for squadSize; 'custom' always allowed
   background: CanvasBackground   // typically 'full-pitch'
   positions: LineupPosition[]
+  showRoleLabels?: boolean   // whether markers render their `role` text or appear blank; defaults true
   notes?: string
   createdAt: string
   updatedAt: string
@@ -340,6 +342,7 @@ export interface CreateLineupInput {
   squadSize: SquadSize
   formation?: Formation
   positions: LineupPosition[]
+  showRoleLabels?: boolean
   notes?: string
 }
 ```
@@ -384,16 +387,17 @@ CREATE TABLE session_activities (
 CREATE INDEX idx_sa_session_id ON session_activities(session_id);
 
 CREATE TABLE lineups (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  match_date  TEXT,
-  squad_size  INTEGER NOT NULL,          -- 7, 9, or 11
-  formation   TEXT,
-  background  TEXT NOT NULL DEFAULT 'full-pitch',
-  positions   TEXT NOT NULL,             -- JSON (LineupPosition[])
-  notes       TEXT,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  match_date        TEXT,
+  squad_size        INTEGER NOT NULL,          -- 7, 9, or 11
+  formation         TEXT,
+  background        TEXT NOT NULL DEFAULT 'full-pitch',
+  positions         TEXT NOT NULL,             -- JSON (LineupPosition[])
+  show_role_labels  INTEGER NOT NULL DEFAULT 1, -- added in migration 002; 0/1 boolean
+  notes             TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
 );
 ```
 
@@ -472,3 +476,8 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Equipment sizing | Normalize by rendered on-canvas footprint (not raw SVG width), since each asset's viewBox/margin differs; all items smaller than the 30px marker except the full Goal | Identical width numbers produced very different visual sizes; normalizing by rendered result is the correct fix |
 | Per-object color (cone/disc) | Add optional `color` field in Session 2; editing UI in Session 3 with selection | Data model first, UI later — keeps Session 2 to placement while making Session 3's color picker a wiring task |
 | Reposition in Session 2 | Drag-to-move placed objects (no selection box/handles/toolbar) | Placement-refinement so mis-taps are fixable; full selection stays Session 3 |
+| Lineup formations (finalized) | 7v7: 2-3-1, 3-2-1, 3-1-2. 9v9: 3-4-1, 2-5-1, 3-2-3. 11v11: 4-3-3, 4-4-2, 3-5-2. Each + custom | Coach-specified real youth formations; every named formation's numbers sum to squadSize - 1 (GK not counted in the string) |
+| Lineup match date | Field kept (optional) but not surfaced in the Session 5 editor UI | A lineup is identified by name + squad size + formation only, not a fixture date — coach doesn't tie lineups to specific games |
+| Lineup marker labeling | Two separate fields: `role` (positional abbreviation, e.g. GK/CB) renders inside the marker circle, toggleable blank via a saved per-lineup `showRoleLabels` switch; `label` (player name/initials) always renders as a caption below the marker | Keeps the positional diagram legible (matches the canvas marker's in-circle label convention) while giving the coach a persistent name tag that isn't a diagram symbol |
+| Lineup gesture handling | New minimal drag/tap gesture per marker, not the canvas's shared `useCanvasGestures`/`InteractionState` engine; tap and drag are purpose-built `Gesture.Tap()`/`Gesture.Pan()` raced via `Gesture.Race()` rather than inferred from one Pan's travel distance | Lineup markers have no rotation/scale/arrows/equipment to interact with; a raced Tap+Pan avoids the "Pan's onEnd doesn't fire for a near-zero-movement touch" failure mode a single-Pan tap heuristic hit in practice |
+| Lineup default role abbreviations | Defense/attack edges get wide variants (FB/W) whenever their line has 3+ players. Midfield needs one more before going wide: a line of 4+ (e.g. 4-4-2's four, 9v9's 2-5-1) gets W at the edges; a 3-player midfield (e.g. 4-3-3) stays uniform CM. Applies at every squad size | Matches real formation naming — a 3-man midfield is conventionally central mids with no out-and-out wingers, while a flat four or five genuinely has wide players, regardless of squad size |

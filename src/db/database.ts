@@ -1,10 +1,11 @@
 import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite'
 
 import * as migration001 from './migrations/001_initial'
+import * as migration002 from './migrations/002_lineup_role_labels'
 
 const DATABASE_NAME = 'pulse.db'
 
-const migrations = [migration001]
+const migrations = [migration001, migration002]
 
 let db: SQLiteDatabase | null = null
 

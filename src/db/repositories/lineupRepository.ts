@@ -17,6 +17,7 @@ interface LineupRow {
   formation: Formation | null
   background: CanvasBackground
   positions: string
+  show_role_labels: number
   notes: string | null
   created_at: string
   updated_at: string
@@ -31,6 +32,7 @@ function toLineup(row: LineupRow): Lineup {
     formation: row.formation ?? undefined,
     background: row.background,
     positions: JSON.parse(row.positions) as LineupPosition[],
+    showRoleLabels: row.show_role_labels !== 0,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -60,14 +62,15 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     formation: input.formation,
     background: 'full-pitch',
     positions: input.positions,
+    showRoleLabels: input.showRoleLabels ?? true,
     notes: input.notes,
     createdAt: now,
     updatedAt: now,
   }
 
   db.runSync(
-    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     lineup.id,
     lineup.name,
     lineup.matchDate ?? null,
@@ -75,6 +78,7 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     lineup.formation ?? null,
     lineup.background,
     JSON.stringify(lineup.positions),
+    lineup.showRoleLabels ? 1 : 0,
     lineup.notes ?? null,
     lineup.createdAt,
     lineup.updatedAt
@@ -96,13 +100,14 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
 
   db.runSync(
     `UPDATE lineups
-     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, notes = ?, updated_at = ?
+     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, notes = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.matchDate ?? null,
     updated.squadSize,
     updated.formation ?? null,
     JSON.stringify(updated.positions),
+    updated.showRoleLabels ? 1 : 0,
     updated.notes ?? null,
     updated.updatedAt,
     id
