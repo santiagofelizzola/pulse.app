@@ -1,56 +1,166 @@
-import { useCallback, useState } from 'react'
-import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Image, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { Alert, FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
 
-import { ScreenHeader } from '../../components/ui/ScreenHeader'
+import { HeaderActionButton, ScreenHeader } from '../../components/ui/ScreenHeader'
 import { activityRepository } from '../../db/repositories/activityRepository'
+import { sessionRepository } from '../../db/repositories/sessionRepository'
 import { navigate } from '../../navigation/rootNavigation'
+import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
-import type { Activity } from '../../types'
+import type { Activity, ActivityTag, Session } from '../../types'
+import { ActivityCard } from './components/ActivityCard'
+import { FilterChipRow } from './components/FilterChipRow'
+import { SegmentedToggle } from './components/SegmentedToggle'
+import { SessionListItem } from './components/SessionListItem'
+
+type LibraryView = 'drills' | 'sessions'
+
+const VIEW_OPTIONS: Array<{ value: LibraryView; label: string }> = [
+  { value: 'drills', label: 'Drills' },
+  { value: 'sessions', label: 'Sessions' },
+]
 
 export default function LibraryScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
+  const [view, setView] = useState<LibraryView>('drills')
   const [activities, setActivities] = useState<Activity[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [selectedTag, setSelectedTag] = useState<ActivityTag | undefined>(undefined)
 
   useFocusEffect(
     useCallback(() => {
       activityRepository.list().then(setActivities)
+      sessionRepository.list().then(setSessions)
     }, [])
   )
 
+  const filteredActivities = useMemo(
+    () => (selectedTag ? activities.filter((activity) => activity.tag === selectedTag) : activities),
+    [activities, selectedTag]
+  )
+
+  const handleDeleteSession = useCallback((session: Session) => {
+    Alert.alert('Delete session?', `"${session.name}" will be removed.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await sessionRepository.delete(session.id)
+          setSessions(await sessionRepository.list())
+        },
+      },
+    ])
+  }, [])
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScreenHeader title="Library" />
-      {activities.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.headline}>No activities yet</Text>
-          <Text style={styles.supporting}>Save a drill from the canvas to start your library.</Text>
-          <Pressable style={styles.cta} onPress={() => navigate('Canvas')}>
-            <Text style={styles.ctaLabel}>Open canvas</Text>
-          </Pressable>
-        </View>
+      <ScreenHeader
+        title="Library"
+        trailing={
+          view === 'sessions' ? (
+            <HeaderActionButton label="+" onPress={() => navigation.navigate('SessionBuilder')} />
+          ) : undefined
+        }
+      />
+
+      <View style={styles.toggleRow}>
+        <SegmentedToggle options={VIEW_OPTIONS} value={view} onChange={setView} />
+      </View>
+
+      {view === 'drills' ? (
+        <DrillsView
+          activities={activities}
+          filteredActivities={filteredActivities}
+          selectedTag={selectedTag}
+          onSelectTag={setSelectedTag}
+          onOpenActivity={(activityId) => navigation.navigate('ActivityDetail', { activityId })}
+        />
       ) : (
-        // Minimal list — just proves the save path works end to end. The real Drills grid +
-        // tag filter chips (design.md §6 Card spec) is Session 4's job.
-        <FlatList
-          data={activities}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              {item.thumbnailUri ? (
-                <Image source={{ uri: item.thumbnailUri }} style={styles.thumbnail} />
-              ) : (
-                <View style={styles.thumbnailPlaceholder} />
-              )}
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{item.name}</Text>
-                {item.tag ? <Text style={styles.rowTag}>{item.tag}</Text> : null}
-              </View>
-            </View>
-          )}
+        <SessionsView
+          sessions={sessions}
+          onOpenSession={(sessionId) => navigation.navigate('SessionBuilder', { sessionId })}
+          onNewSession={() => navigation.navigate('SessionBuilder')}
+          onDeleteSession={handleDeleteSession}
         />
       )}
     </SafeAreaView>
+  )
+}
+
+interface DrillsViewProps {
+  activities: Activity[]
+  filteredActivities: Activity[]
+  selectedTag: ActivityTag | undefined
+  onSelectTag: (tag: ActivityTag | undefined) => void
+  onOpenActivity: (activityId: string) => void
+}
+
+function DrillsView({ activities, filteredActivities, selectedTag, onSelectTag, onOpenActivity }: DrillsViewProps) {
+  if (activities.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.headline}>No activities yet</Text>
+        <Text style={styles.supporting}>Save a drill from the canvas to start your library.</Text>
+        <Pressable style={styles.cta} onPress={() => navigate('Canvas')}>
+          <Text style={styles.ctaLabel}>Open canvas</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.flex}>
+      <View style={styles.chipRow}>
+        <FilterChipRow selected={selectedTag} onSelect={onSelectTag} />
+      </View>
+      {filteredActivities.length === 0 ? (
+        <Text style={styles.noMatches}>No drills match this filter.</Text>
+      ) : (
+        <FlatList
+          data={filteredActivities}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.gridRow}
+          renderItem={({ item }) => <ActivityCard activity={item} onPress={() => onOpenActivity(item.id)} />}
+        />
+      )}
+    </View>
+  )
+}
+
+interface SessionsViewProps {
+  sessions: Session[]
+  onOpenSession: (sessionId: string) => void
+  onNewSession: () => void
+  onDeleteSession: (session: Session) => void
+}
+
+function SessionsView({ sessions, onOpenSession, onNewSession, onDeleteSession }: SessionsViewProps) {
+  if (sessions.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.headline}>No sessions planned</Text>
+        <Text style={styles.supporting}>Build a session from your saved activities.</Text>
+        <Pressable style={styles.cta} onPress={onNewSession}>
+          <Text style={styles.ctaLabel}>New session</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <FlatList
+      data={sessions}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.list}
+      renderItem={({ item }) => (
+        <SessionListItem session={item} onPress={() => onOpenSession(item.id)} onDelete={() => onDeleteSession(item)} />
+      )}
+    />
   )
 }
 
@@ -58,6 +168,34 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  flex: {
+    flex: 1,
+  },
+  toggleRow: {
+    paddingHorizontal: layout.screenPaddingX,
+    marginBottom: spacing.lg,
+  },
+  chipRow: {
+    marginBottom: spacing.lg,
+  },
+  noMatches: {
+    ...typography.callout,
+    color: colors.textSecondary,
+    paddingHorizontal: layout.screenPaddingX,
+  },
+  grid: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+  gridRow: {
+    gap: spacing.lg,
+  },
+  list: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
   },
   emptyState: {
     flex: 1,
@@ -89,41 +227,5 @@ const styles = StyleSheet.create({
   ctaLabel: {
     ...typography.label,
     color: colors.primary,
-  },
-  list: {
-    paddingHorizontal: layout.screenPaddingX,
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  thumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceSunken,
-  },
-  thumbnailPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceSunken,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  rowText: {
-    marginLeft: spacing.md,
-    flex: 1,
-  },
-  rowTitle: {
-    ...typography.h3,
-    color: colors.textPrimary,
-  },
-  rowTag: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xxs,
   },
 })

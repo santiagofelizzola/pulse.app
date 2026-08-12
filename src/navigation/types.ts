@@ -2,7 +2,8 @@ import type { NavigatorScreenParams } from '@react-navigation/native'
 
 export type LibraryStackParamList = {
   Library: undefined
-  // SessionBuilder and ActivityDetail are added in Session 4
+  SessionBuilder: { sessionId?: string } | undefined
+  ActivityDetail: { activityId: string }
 }
 
 export type LineupsStackParamList = {

@@ -229,6 +229,54 @@ async function removeActivity(sessionId: string, sessionActivityId: string): Pro
   await recalculateTotalDuration(db, sessionId)
 }
 
+async function updateActivity(
+  sessionId: string,
+  sessionActivityId: string,
+  // durationOverride: number sets it, null explicitly clears it, undefined (or the key
+  // omitted) leaves it unchanged — distinct from coachingPoints/blockType, which have no
+  // "unset" state worth representing separately from their default.
+  patch: { blockType?: BlockType; coachingPoints?: string; durationOverride?: number | null }
+): Promise<SessionActivity | null> {
+  const db = getDatabase()
+  const row = db.getFirstSync<SessionActivityRow>(
+    `SELECT sa.id, sa.session_id, sa.activity_id, sa.position, sa.block_type, sa.coaching_points, sa.duration_override,
+            a.name AS a_name, a.tag AS a_tag, a.duration_minutes AS a_duration_minutes, a.notes AS a_notes,
+            a.canvas_data AS a_canvas_data, a.thumbnail_uri AS a_thumbnail_uri,
+            a.created_at AS a_created_at, a.updated_at AS a_updated_at
+     FROM session_activities sa
+     JOIN activities a ON a.id = sa.activity_id
+     WHERE sa.id = ? AND sa.session_id = ?`,
+    sessionActivityId,
+    sessionId
+  )
+  if (!row) return null
+
+  const blockType = patch.blockType ?? row.block_type
+  const coachingPoints = patch.coachingPoints !== undefined ? patch.coachingPoints : (row.coaching_points ?? undefined)
+  const durationOverride =
+    patch.durationOverride === undefined ? (row.duration_override ?? undefined) : (patch.durationOverride ?? undefined)
+
+  db.runSync(
+    'UPDATE session_activities SET block_type = ?, coaching_points = ?, duration_override = ? WHERE id = ? AND session_id = ?',
+    blockType,
+    coachingPoints ?? null,
+    durationOverride ?? null,
+    sessionActivityId,
+    sessionId
+  )
+
+  if (patch.durationOverride !== undefined) {
+    await recalculateTotalDuration(db, sessionId)
+  }
+
+  return toSessionActivity({
+    ...row,
+    block_type: blockType,
+    coaching_points: coachingPoints ?? null,
+    duration_override: durationOverride ?? null,
+  })
+}
+
 export const sessionRepository = {
   list,
   getById,
@@ -238,4 +286,5 @@ export const sessionRepository = {
   addActivity,
   reorderActivities,
   removeActivity,
+  updateActivity,
 }

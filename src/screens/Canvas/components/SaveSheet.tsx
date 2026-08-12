@@ -3,19 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
+import { ACTIVITY_TAG_OPTIONS } from '../../../utils/activityTags'
 import type { ActivityTag } from '../../../types'
-
-const TAG_OPTIONS: Array<{ value: ActivityTag; label: string }> = [
-  { value: 'warm-up', label: 'Warm-up' },
-  { value: 'technical', label: 'Technical' },
-  { value: 'possession', label: 'Possession' },
-  { value: 'pressing', label: 'Pressing' },
-  { value: 'attacking', label: 'Attacking' },
-  { value: 'defending', label: 'Defending' },
-  { value: 'transition', label: 'Transition' },
-  { value: 'finishing', label: 'Finishing' },
-  { value: 'set-piece', label: 'Set piece' },
-]
 
 interface SaveSheetProps {
   visible: boolean
@@ -53,7 +42,7 @@ export function SaveSheet({ visible, saving, error, onClose, onSave }: SaveSheet
 
       <Text style={styles.label}>Tag (optional)</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-        {TAG_OPTIONS.map((option) => {
+        {ACTIVITY_TAG_OPTIONS.map((option) => {
           const selected = tag === option.value
           return (
             <Pressable

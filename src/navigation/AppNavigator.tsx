@@ -5,7 +5,9 @@ import { Folder, Icon } from 'lucide-react-native'
 import { StyleSheet, Text } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import ActivityDetailScreen from '../screens/Library/ActivityDetailScreen'
 import LibraryScreen from '../screens/Library/LibraryScreen'
+import SessionBuilderScreen from '../screens/Library/SessionBuilderScreen'
 import LineupsScreen from '../screens/Lineups/LineupsScreen'
 import { colors, typography, spacing, fonts } from '../theme/theme'
 import { navigate } from './rootNavigation'
@@ -19,7 +21,8 @@ function LibraryStack() {
   return (
     <LibraryStackNav.Navigator screenOptions={{ headerShown: false }}>
       <LibraryStackNav.Screen name="Library" component={LibraryScreen} />
-      {/* SessionBuilderScreen and ActivityDetailScreen are added in Session 4 */}
+      <LibraryStackNav.Screen name="SessionBuilder" component={SessionBuilderScreen} />
+      <LibraryStackNav.Screen name="ActivityDetail" component={ActivityDetailScreen} />
     </LibraryStackNav.Navigator>
   )
 }

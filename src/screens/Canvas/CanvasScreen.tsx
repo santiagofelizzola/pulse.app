@@ -7,6 +7,7 @@ import { LayoutGrid, Redo2, Save, Undo2, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { activityRepository } from '../../db/repositories/activityRepository'
+import { useCanvasStore } from '../../store/canvasStore'
 import { colors, layout, spacing, typography } from '../../theme/theme'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
 import type { PlaceableToolType, ShapeToolType } from '../../store/canvasStore'
@@ -45,7 +46,6 @@ export default function CanvasScreen() {
     selected,
     canUndo,
     canRedo,
-    hasUnsavedChanges,
     selectTool,
     selectBackground,
     place,
@@ -86,7 +86,12 @@ export default function CanvasScreen() {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (event) => {
-      if (!hasUnsavedChanges) return
+      // Reads the store directly instead of the closured `hasUnsavedChanges` — handleSave calls
+      // markSaved() then navigation.goBack() synchronously in the same tick, before React has
+      // re-rendered and resubscribed this listener with a fresh closure. A stale closure here
+      // would still see "unsaved" and show the discard prompt right after a successful save.
+      const state = useCanvasStore.getState()
+      if (state.historyIndex === state.savedAtHistoryIndex) return
       event.preventDefault()
       Alert.alert('Discard changes?', undefined, [
         { text: 'Keep editing', style: 'cancel' },
@@ -94,7 +99,7 @@ export default function CanvasScreen() {
       ])
     })
     return unsubscribe
-  }, [navigation, hasUnsavedChanges])
+  }, [navigation])
 
   const handleAreaLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout
