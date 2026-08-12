@@ -17,6 +17,9 @@ export interface SessionActivity {
 export interface Session {
   id: string                 // device-generated uuid
   name: string
+  focus?: string
+  playerCount?: number       // session-level default; activities keep their own independent playerCount
+  coachingMoments?: string   // session-level; distinct from the per-block `coachingPoints` on SessionActivity
   activities: SessionActivity[]
   totalDurationMinutes: number
   createdAt: string
@@ -25,6 +28,9 @@ export interface Session {
 
 export interface CreateSessionInput {
   name: string
+  focus?: string
+  playerCount?: number
+  coachingMoments?: string
 }
 
 export interface AddSessionActivityInput {

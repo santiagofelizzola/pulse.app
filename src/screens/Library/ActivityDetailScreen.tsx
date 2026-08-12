@@ -1,15 +1,17 @@
 import { useCallback, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { Trash2 } from 'lucide-react-native'
+import { Pencil, Trash2 } from 'lucide-react-native'
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { ScreenHeader } from '../../components/ui/ScreenHeader'
+import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { activityTagLabel } from '../../utils/activityTags'
-import type { Activity } from '../../types'
+import type { Activity, ActivityTag } from '../../types'
+import { ActivityEditSheet } from './components/ActivityEditSheet'
 
 type Route = RouteProp<LibraryStackParamList, 'ActivityDetail'>
 
@@ -17,6 +19,9 @@ export default function ActivityDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
   const { params } = useRoute<Route>()
   const [activity, setActivity] = useState<Activity | null>(null)
+  const [editSheetOpen, setEditSheetOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useFocusEffect(
     useCallback(() => {
@@ -39,9 +44,39 @@ export default function ActivityDetailScreen() {
     ])
   }, [activity, navigation])
 
+  const handleSaveEdit = useCallback(
+    async (patch: {
+      name: string
+      tag?: ActivityTag
+      durationMinutes?: number
+      notes?: string
+      playerCount?: number
+      playerActions?: string
+    }) => {
+      if (!activity) return
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const updated = await activityRepository.update(activity.id, patch)
+        if (updated) setActivity(updated)
+        setEditSheetOpen(false)
+      } catch {
+        setSaveError('Could not save. Try again.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [activity]
+  )
+
   if (!activity) {
     return <SafeAreaView style={styles.safeArea} />
   }
+
+  // The saved thumbnail file already captures the full canvas at its real aspect ratio (see
+  // captureCanvasThumbnail) — the container just needs to match that ratio instead of forcing a
+  // square, otherwise `contain`/`cover` crops or letterboxes the picture unpredictably.
+  const thumbnailAspectRatio = getPitchAspectRatio(activity.canvasData.background)
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -49,17 +84,30 @@ export default function ActivityDetailScreen() {
         title={activity.name}
         onBack={() => navigation.goBack()}
         trailing={
-          <Pressable onPress={handleDelete} hitSlop={layout.hitSlop} style={styles.deleteButton}>
-            <Trash2 size={22} color={colors.error} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => setEditSheetOpen(true)}
+              hitSlop={layout.hitSlop}
+              style={styles.headerActionButton}
+            >
+              <Pencil size={20} color={colors.textPrimary} />
+            </Pressable>
+            <Pressable onPress={handleDelete} hitSlop={layout.hitSlop} style={styles.headerActionButton}>
+              <Trash2 size={22} color={colors.error} />
+            </Pressable>
+          </View>
         }
       />
 
       <ScrollView contentContainerStyle={styles.content}>
         {activity.thumbnailUri ? (
-          <Image source={{ uri: activity.thumbnailUri }} style={styles.thumbnail} />
+          <Image
+            source={{ uri: activity.thumbnailUri }}
+            style={[styles.thumbnail, { aspectRatio: thumbnailAspectRatio }]}
+            resizeMode="contain"
+          />
         ) : (
-          <View style={styles.thumbnailPlaceholder} />
+          <View style={[styles.thumbnailPlaceholder, { aspectRatio: thumbnailAspectRatio }]} />
         )}
 
         <View style={styles.metaRow}>
@@ -69,6 +117,7 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
           {activity.durationMinutes ? <Text style={styles.duration}>{activity.durationMinutes} min</Text> : null}
+          {activity.playerCount ? <Text style={styles.duration}>{activity.playerCount} players</Text> : null}
         </View>
 
         {activity.notes ? (
@@ -77,7 +126,23 @@ export default function ActivityDetailScreen() {
             <Text style={styles.notesBody}>{activity.notes}</Text>
           </View>
         ) : null}
+
+        {activity.playerActions ? (
+          <View style={styles.notesSection}>
+            <Text style={styles.notesLabel}>Player actions</Text>
+            <Text style={styles.notesBody}>{activity.playerActions}</Text>
+          </View>
+        ) : null}
       </ScrollView>
+
+      <ActivityEditSheet
+        visible={editSheetOpen}
+        activity={activity}
+        saving={saving}
+        error={saveError}
+        onClose={() => setEditSheetOpen(false)}
+        onSave={handleSaveEdit}
+      />
     </SafeAreaView>
   )
 }
@@ -87,7 +152,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  deleteButton: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActionButton: {
     width: layout.touchTarget,
     height: layout.touchTarget,
     alignItems: 'center',
@@ -99,7 +168,6 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     width: '100%',
-    aspectRatio: 1,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceSunken,
     borderWidth: 1,
@@ -107,7 +175,6 @@ const styles = StyleSheet.create({
   },
   thumbnailPlaceholder: {
     width: '100%',
-    aspectRatio: 1,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceSunken,
     borderWidth: 1,

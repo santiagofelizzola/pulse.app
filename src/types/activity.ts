@@ -10,6 +10,8 @@ export interface Activity {
   tag?: ActivityTag
   durationMinutes?: number
   notes?: string
+  playerCount?: number
+  playerActions?: string     // free text — what players do in the drill; distinct from `notes`
   canvasData: CanvasData
   thumbnailUri?: string      // local file path (expo-file-system), generated on save
   createdAt: string
@@ -21,6 +23,8 @@ export interface CreateActivityInput {
   tag?: ActivityTag
   durationMinutes?: number
   notes?: string
+  playerCount?: number
+  playerActions?: string
   canvasData: CanvasData
   thumbnailUri?: string      // local file path (expo-file-system), generated on save
 }

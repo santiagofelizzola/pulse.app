@@ -7,6 +7,7 @@ import type {
   Formation,
   CanvasBackground,
   LineupPosition,
+  SubEntry,
 } from '../../types'
 
 interface LineupRow {
@@ -18,6 +19,7 @@ interface LineupRow {
   background: CanvasBackground
   positions: string
   show_role_labels: number
+  subs: string
   notes: string | null
   created_at: string
   updated_at: string
@@ -33,6 +35,7 @@ function toLineup(row: LineupRow): Lineup {
     background: row.background,
     positions: JSON.parse(row.positions) as LineupPosition[],
     showRoleLabels: row.show_role_labels !== 0,
+    subs: JSON.parse(row.subs) as SubEntry[],
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -63,14 +66,15 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     background: 'full-pitch',
     positions: input.positions,
     showRoleLabels: input.showRoleLabels ?? true,
+    subs: input.subs ?? [],
     notes: input.notes,
     createdAt: now,
     updatedAt: now,
   }
 
   db.runSync(
-    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     lineup.id,
     lineup.name,
     lineup.matchDate ?? null,
@@ -79,6 +83,7 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     lineup.background,
     JSON.stringify(lineup.positions),
     lineup.showRoleLabels ? 1 : 0,
+    JSON.stringify(lineup.subs),
     lineup.notes ?? null,
     lineup.createdAt,
     lineup.updatedAt
@@ -100,7 +105,7 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
 
   db.runSync(
     `UPDATE lineups
-     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, notes = ?, updated_at = ?
+     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.matchDate ?? null,
@@ -108,6 +113,7 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
     updated.formation ?? null,
     JSON.stringify(updated.positions),
     updated.showRoleLabels ? 1 : 0,
+    JSON.stringify(updated.subs ?? []),
     updated.notes ?? null,
     updated.updatedAt,
     id

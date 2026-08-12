@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
-import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Canvas } from '@shopify/react-native-skia'
+import { randomUUID } from 'expo-crypto'
 import { Eye, EyeOff, LayoutGrid, Save, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getPitchAspectRatio, PitchBackground } from '../Canvas/components/PitchBackground'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
 import type { RootStackParamList } from '../../navigation/types'
-import { colors, layout, spacing, typography } from '../../theme/theme'
+import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { getFormationSlots } from '../../utils/formationSlots'
-import type { CreateLineupInput, Formation, LineupPosition, SquadSize } from '../../types'
+import type { CreateLineupInput, Formation, LineupPosition, SquadSize, SubEntry } from '../../types'
 import { FormationPicker } from './components/FormationPicker'
 import { LineupMarker } from './components/LineupMarker'
 import { LineupSaveSheet } from './components/LineupSaveSheet'
 import { PositionEditSheet } from './components/PositionEditSheet'
 import { SquadSizePicker } from './components/SquadSizePicker'
+import { SubEditSheet } from './components/SubEditSheet'
 
 type Route = RouteProp<RootStackParamList, 'LineupEditor'>
 
@@ -35,9 +37,12 @@ export default function LineupEditorScreen() {
   const [positions, setPositions] = useState<LineupPosition[]>([])
   const [name, setName] = useState('')
   const [showRoleLabels, setShowRoleLabels] = useState(true)
+  const [subs, setSubs] = useState<SubEntry[]>([])
 
   const [formationPickerOpen, setFormationPickerOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<LineupPosition | null>(null)
+  const [subSheetOpen, setSubSheetOpen] = useState(false)
+  const [editingSub, setEditingSub] = useState<SubEntry | null>(null)
   const [saveSheetOpen, setSaveSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -57,6 +62,7 @@ export default function LineupEditorScreen() {
       setPositions(loaded.positions)
       setName(loaded.name)
       setShowRoleLabels(loaded.showRoleLabels ?? true)
+      setSubs(loaded.subs ?? [])
       setPhase('pitch')
     })
   }, [lineupId])
@@ -145,6 +151,34 @@ export default function LineupEditorScreen() {
     dirtyRef.current = true
   }, [])
 
+  const handleAddSubPress = useCallback(() => {
+    setEditingSub(null)
+    setSubSheetOpen(true)
+  }, [])
+
+  const handleSubPress = useCallback((sub: SubEntry) => {
+    setEditingSub(sub)
+    setSubSheetOpen(true)
+  }, [])
+
+  const handleSaveSub = useCallback(
+    (patch: { name: string; position?: string }) => {
+      dirtyRef.current = true
+      if (editingSub) {
+        setSubs((prev) => prev.map((sub) => (sub.id === editingSub.id ? { ...sub, ...patch } : sub)))
+      } else {
+        setSubs((prev) => [...prev, { id: randomUUID(), ...patch }])
+      }
+    },
+    [editingSub]
+  )
+
+  const handleRemoveSub = useCallback(() => {
+    if (!editingSub) return
+    dirtyRef.current = true
+    setSubs((prev) => prev.filter((sub) => sub.id !== editingSub.id))
+  }, [editingSub])
+
   const handleSave = useCallback(
     async (trimmedName: string) => {
       if (!squadSize) return
@@ -157,6 +191,7 @@ export default function LineupEditorScreen() {
           formation: formation ?? undefined,
           positions,
           showRoleLabels,
+          subs,
         }
         if (lineupId) {
           await lineupRepository.update(lineupId, input)
@@ -172,7 +207,7 @@ export default function LineupEditorScreen() {
         setSaving(false)
       }
     },
-    [squadSize, formation, positions, showRoleLabels, lineupId, navigation]
+    [squadSize, formation, positions, showRoleLabels, subs, lineupId, navigation]
   )
 
   const isPitchEmpty = positions.length === 0
@@ -245,6 +280,25 @@ export default function LineupEditorScreen() {
         </View>
       )}
 
+      {phase === 'pitch' ? (
+        <View style={styles.subsSection}>
+          <Text style={styles.subsLabel}>Subs</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subsRow}>
+            {subs.map((sub) => (
+              <Pressable key={sub.id} onPress={() => handleSubPress(sub)} style={styles.subChip}>
+                <Text style={styles.subChipLabel}>
+                  {sub.name}
+                  {sub.position ? ` · ${sub.position}` : ''}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={handleAddSubPress} style={[styles.subChip, styles.addSubChip]}>
+              <Text style={styles.addSubChipLabel}>+ Add sub</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      ) : null}
+
       {squadSize ? (
         <FormationPicker
           visible={formationPickerOpen}
@@ -260,6 +314,14 @@ export default function LineupEditorScreen() {
         position={editingPosition}
         onClose={() => setEditingPosition(null)}
         onSave={handleSavePosition}
+      />
+
+      <SubEditSheet
+        visible={subSheetOpen}
+        sub={editingSub}
+        onClose={() => setSubSheetOpen(false)}
+        onSave={handleSaveSub}
+        onRemove={handleRemoveSub}
       />
 
       <LineupSaveSheet
@@ -324,5 +386,42 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.canvasInk,
+  },
+  subsSection: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
+  },
+  subsLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  subsRow: {
+    gap: spacing.sm,
+  },
+  subChip: {
+    height: 34,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subChipLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+  },
+  addSubChip: {
+    backgroundColor: colors.primaryTint,
+    borderColor: 'transparent',
+  },
+  addSubChipLabel: {
+    ...typography.label,
+    color: colors.primary,
   },
 })

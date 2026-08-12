@@ -19,6 +19,13 @@ export interface LineupPosition {
   y: number                  // normalized 0..1 down the pitch
 }
 
+// A structured substitute entry — starters remain the on-pitch LineupPositions above.
+export interface SubEntry {
+  id: string
+  name: string
+  position?: string
+}
+
 export interface Lineup {
   id: string                 // device-generated uuid
   name: string
@@ -28,6 +35,7 @@ export interface Lineup {
   background: CanvasBackground   // typically 'full-pitch'
   positions: LineupPosition[]
   showRoleLabels?: boolean   // whether markers render their `role` text or appear blank; defaults true
+  subs?: SubEntry[]
   notes?: string
   createdAt: string
   updatedAt: string
@@ -40,5 +48,6 @@ export interface CreateLineupInput {
   formation?: Formation
   positions: LineupPosition[]
   showRoleLabels?: boolean
+  subs?: SubEntry[]
   notes?: string
 }

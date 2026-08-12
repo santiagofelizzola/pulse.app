@@ -164,7 +164,17 @@ export default function CanvasScreen() {
   })
 
   const handleSave = useCallback(
-    async ({ name, tag }: { name: string; tag?: ActivityTag }) => {
+    async ({
+      name,
+      tag,
+      playerCount,
+      playerActions,
+    }: {
+      name: string
+      tag?: ActivityTag
+      playerCount?: number
+      playerActions?: string
+    }) => {
       setSaving(true)
       setSaveError(null)
       try {
@@ -173,7 +183,7 @@ export default function CanvasScreen() {
 
         const thumbnailUri = await captureCanvasThumbnail(canvasBoxRef)
         const canvasData: CanvasData = { version: 1, background, objects, arrows }
-        await activityRepository.create({ name, tag, canvasData, thumbnailUri })
+        await activityRepository.create({ name, tag, playerCount, playerActions, canvasData, thumbnailUri })
 
         markSaved()
         setSaveSheetOpen(false)

@@ -9,6 +9,8 @@ interface ActivityRow {
   tag: ActivityTag | null
   duration_minutes: number | null
   notes: string | null
+  player_count: number | null
+  player_actions: string | null
   canvas_data: string
   thumbnail_uri: string | null
   created_at: string
@@ -22,6 +24,8 @@ function toActivity(row: ActivityRow): Activity {
     tag: row.tag ?? undefined,
     durationMinutes: row.duration_minutes ?? undefined,
     notes: row.notes ?? undefined,
+    playerCount: row.player_count ?? undefined,
+    playerActions: row.player_actions ?? undefined,
     canvasData: JSON.parse(row.canvas_data) as CanvasData,
     thumbnailUri: row.thumbnail_uri ?? undefined,
     createdAt: row.created_at,
@@ -50,6 +54,8 @@ async function create(input: CreateActivityInput): Promise<Activity> {
     tag: input.tag,
     durationMinutes: input.durationMinutes,
     notes: input.notes,
+    playerCount: input.playerCount,
+    playerActions: input.playerActions,
     canvasData: input.canvasData,
     thumbnailUri: input.thumbnailUri,
     createdAt: now,
@@ -57,13 +63,15 @@ async function create(input: CreateActivityInput): Promise<Activity> {
   }
 
   db.runSync(
-    `INSERT INTO activities (id, name, tag, duration_minutes, notes, canvas_data, thumbnail_uri, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO activities (id, name, tag, duration_minutes, notes, player_count, player_actions, canvas_data, thumbnail_uri, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     activity.id,
     activity.name,
     activity.tag ?? null,
     activity.durationMinutes ?? null,
     activity.notes ?? null,
+    activity.playerCount ?? null,
+    activity.playerActions ?? null,
     JSON.stringify(activity.canvasData),
     activity.thumbnailUri ?? null,
     activity.createdAt,
@@ -86,12 +94,14 @@ async function update(id: string, patch: Partial<CreateActivityInput>): Promise<
 
   db.runSync(
     `UPDATE activities
-     SET name = ?, tag = ?, duration_minutes = ?, notes = ?, canvas_data = ?, updated_at = ?
+     SET name = ?, tag = ?, duration_minutes = ?, notes = ?, player_count = ?, player_actions = ?, canvas_data = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.tag ?? null,
     updated.durationMinutes ?? null,
     updated.notes ?? null,
+    updated.playerCount ?? null,
+    updated.playerActions ?? null,
     JSON.stringify(updated.canvasData),
     updated.updatedAt,
     id

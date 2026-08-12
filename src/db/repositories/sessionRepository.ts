@@ -16,6 +16,9 @@ import type {
 interface SessionRow {
   id: string
   name: string
+  focus: string | null
+  player_count: number | null
+  coaching_moments: string | null
   total_duration_minutes: number
   created_at: string
   updated_at: string
@@ -34,6 +37,8 @@ interface SessionActivityRow {
   a_tag: ActivityTag | null
   a_duration_minutes: number | null
   a_notes: string | null
+  a_player_count: number | null
+  a_player_actions: string | null
   a_canvas_data: string
   a_thumbnail_uri: string | null
   a_created_at: string
@@ -47,6 +52,8 @@ function toSessionActivity(row: SessionActivityRow): SessionActivity {
     tag: row.a_tag ?? undefined,
     durationMinutes: row.a_duration_minutes ?? undefined,
     notes: row.a_notes ?? undefined,
+    playerCount: row.a_player_count ?? undefined,
+    playerActions: row.a_player_actions ?? undefined,
     canvasData: JSON.parse(row.a_canvas_data) as CanvasData,
     thumbnailUri: row.a_thumbnail_uri ?? undefined,
     createdAt: row.a_created_at,
@@ -69,6 +76,7 @@ function getSessionActivities(db: SQLiteDatabase, sessionId: string): SessionAct
     `SELECT
        sa.id, sa.session_id, sa.activity_id, sa.position, sa.block_type, sa.coaching_points, sa.duration_override,
        a.name AS a_name, a.tag AS a_tag, a.duration_minutes AS a_duration_minutes, a.notes AS a_notes,
+       a.player_count AS a_player_count, a.player_actions AS a_player_actions,
        a.canvas_data AS a_canvas_data, a.thumbnail_uri AS a_thumbnail_uri,
        a.created_at AS a_created_at, a.updated_at AS a_updated_at
      FROM session_activities sa
@@ -84,6 +92,9 @@ function toSession(db: SQLiteDatabase, row: SessionRow): Session {
   return {
     id: row.id,
     name: row.name,
+    focus: row.focus ?? undefined,
+    playerCount: row.player_count ?? undefined,
+    coachingMoments: row.coaching_moments ?? undefined,
     activities: getSessionActivities(db, row.id),
     totalDurationMinutes: row.total_duration_minutes,
     createdAt: row.created_at,
@@ -109,6 +120,9 @@ async function create(input: CreateSessionInput): Promise<Session> {
   const session: Session = {
     id: randomUUID(),
     name: input.name,
+    focus: input.focus,
+    playerCount: input.playerCount,
+    coachingMoments: input.coachingMoments,
     activities: [],
     totalDurationMinutes: 0,
     createdAt: now,
@@ -116,10 +130,13 @@ async function create(input: CreateSessionInput): Promise<Session> {
   }
 
   db.runSync(
-    `INSERT INTO sessions (id, name, total_duration_minutes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, name, focus, player_count, coaching_moments, total_duration_minutes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     session.id,
     session.name,
+    session.focus ?? null,
+    session.playerCount ?? null,
+    session.coachingMoments ?? null,
     session.totalDurationMinutes,
     session.createdAt,
     session.updatedAt
@@ -135,15 +152,21 @@ async function update(id: string, patch: Partial<CreateSessionInput>): Promise<S
 
   const updatedAt = new Date().toISOString()
   const name = patch.name ?? existing.name
+  const focus = patch.focus ?? existing.focus
+  const playerCount = patch.playerCount ?? existing.playerCount
+  const coachingMoments = patch.coachingMoments ?? existing.coachingMoments
 
   db.runSync(
-    'UPDATE sessions SET name = ?, updated_at = ? WHERE id = ?',
+    'UPDATE sessions SET name = ?, focus = ?, player_count = ?, coaching_moments = ?, updated_at = ? WHERE id = ?',
     name,
+    focus ?? null,
+    playerCount ?? null,
+    coachingMoments ?? null,
     updatedAt,
     id
   )
 
-  return { ...existing, name, updatedAt }
+  return { ...existing, name, focus, playerCount, coachingMoments, updatedAt }
 }
 
 async function deleteSession(id: string): Promise<void> {
@@ -195,6 +218,7 @@ async function addActivity(
     `SELECT
        sa.id, sa.session_id, sa.activity_id, sa.position, sa.block_type, sa.coaching_points, sa.duration_override,
        a.name AS a_name, a.tag AS a_tag, a.duration_minutes AS a_duration_minutes, a.notes AS a_notes,
+       a.player_count AS a_player_count, a.player_actions AS a_player_actions,
        a.canvas_data AS a_canvas_data, a.thumbnail_uri AS a_thumbnail_uri,
        a.created_at AS a_created_at, a.updated_at AS a_updated_at
      FROM session_activities sa
@@ -241,7 +265,8 @@ async function updateActivity(
   const row = db.getFirstSync<SessionActivityRow>(
     `SELECT sa.id, sa.session_id, sa.activity_id, sa.position, sa.block_type, sa.coaching_points, sa.duration_override,
             a.name AS a_name, a.tag AS a_tag, a.duration_minutes AS a_duration_minutes, a.notes AS a_notes,
-            a.canvas_data AS a_canvas_data, a.thumbnail_uri AS a_thumbnail_uri,
+            a.player_count AS a_player_count, a.player_actions AS a_player_actions,
+       a.canvas_data AS a_canvas_data, a.thumbnail_uri AS a_thumbnail_uri,
             a.created_at AS a_created_at, a.updated_at AS a_updated_at
      FROM session_activities sa
      JOIN activities a ON a.id = sa.activity_id

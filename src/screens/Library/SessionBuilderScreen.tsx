@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { ChevronLeft } from 'lucide-react-native'
+import { ChevronLeft, Info } from 'lucide-react-native'
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
@@ -15,6 +15,7 @@ import { BlockTypePicker } from './components/BlockTypePicker'
 import { CoachingPointsEditor } from './components/CoachingPointsEditor'
 import { DurationEditor } from './components/DurationEditor'
 import { SessionBlockCard, SESSION_CARD_GAP } from './components/SessionBlockCard'
+import { SessionDetailsSheet } from './components/SessionDetailsSheet'
 
 type Route = RouteProp<LibraryStackParamList, 'SessionBuilder'>
 
@@ -25,12 +26,16 @@ export default function SessionBuilderScreen() {
 
   const [session, setSession] = useState<Session | null>(null)
   const [name, setName] = useState('')
+  const [focus, setFocus] = useState('')
+  const [sessionPlayerCount, setSessionPlayerCount] = useState<number | undefined>(undefined)
+  const [coachingMoments, setCoachingMoments] = useState('')
   const [blocks, setBlocks] = useState<SessionActivity[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [pickerOpen, setPickerOpen] = useState(false)
   const [blockTypeTarget, setBlockTypeTarget] = useState<SessionActivity | null>(null)
   const [coachingPointsTarget, setCoachingPointsTarget] = useState<SessionActivity | null>(null)
   const [durationTarget, setDurationTarget] = useState<SessionActivity | null>(null)
+  const [detailsSheetOpen, setDetailsSheetOpen] = useState(false)
 
   const activeIndex = useSharedValue(-1)
   const dragY = useSharedValue(0)
@@ -44,6 +49,9 @@ export default function SessionBuilderScreen() {
         if (!loaded) return
         setSession(loaded)
         setName(loaded.name)
+        setFocus(loaded.focus ?? '')
+        setSessionPlayerCount(loaded.playerCount)
+        setCoachingMoments(loaded.coachingMoments ?? '')
         setBlocks(loaded.activities)
       })
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +68,12 @@ export default function SessionBuilderScreen() {
   // so backing out of an empty builder never leaves a junk row behind.
   async function ensureSession(): Promise<Session> {
     if (session) return session
-    const created = await sessionRepository.create({ name: name.trim() || 'Untitled session' })
+    const created = await sessionRepository.create({
+      name: name.trim() || 'Untitled session',
+      focus: focus.trim() || undefined,
+      playerCount: sessionPlayerCount,
+      coachingMoments: coachingMoments.trim() || undefined,
+    })
     setSession(created)
     return created
   }
@@ -69,6 +82,15 @@ export default function SessionBuilderScreen() {
     setName(value)
     if (session) {
       sessionRepository.update(session.id, { name: value.trim() || 'Untitled session' })
+    }
+  }
+
+  async function handleSaveSessionDetails(patch: { focus?: string; playerCount?: number; coachingMoments?: string }) {
+    setFocus(patch.focus ?? '')
+    setSessionPlayerCount(patch.playerCount)
+    setCoachingMoments(patch.coachingMoments ?? '')
+    if (session) {
+      await sessionRepository.update(session.id, patch)
     }
   }
 
@@ -163,6 +185,9 @@ export default function SessionBuilderScreen() {
             placeholderTextColor={colors.textTertiary}
             style={styles.nameInput}
           />
+          <Pressable onPress={() => setDetailsSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.detailsButton}>
+            <Info size={22} color={colors.textPrimary} />
+          </Pressable>
           <HeaderActionButton label="+" onPress={() => setPickerOpen(true)} />
         </View>
         <Text style={styles.subtitle}>
@@ -229,6 +254,15 @@ export default function SessionBuilderScreen() {
           if (durationTarget) handleSaveDuration(durationTarget, minutes)
         }}
       />
+
+      <SessionDetailsSheet
+        visible={detailsSheetOpen}
+        initialFocus={focus}
+        initialPlayerCount={sessionPlayerCount}
+        initialCoachingMoments={coachingMoments}
+        onClose={() => setDetailsSheetOpen(false)}
+        onSave={handleSaveSessionDetails}
+      />
     </SafeAreaView>
   )
 }
@@ -253,6 +287,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: -layout.hitSlop,
+  },
+  detailsButton: {
+    width: layout.touchTarget,
+    height: layout.touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nameInput: {
     ...typography.h1,

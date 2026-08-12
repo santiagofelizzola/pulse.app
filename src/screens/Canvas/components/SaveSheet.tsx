@@ -11,22 +11,28 @@ interface SaveSheetProps {
   saving: boolean
   error: string | null
   onClose: () => void
-  onSave: (input: { name: string; tag?: ActivityTag }) => void
+  onSave: (input: { name: string; tag?: ActivityTag; playerCount?: number; playerActions?: string }) => void
 }
 
 export function SaveSheet({ visible, saving, error, onClose, onSave }: SaveSheetProps) {
   const [name, setName] = useState('')
   const [tag, setTag] = useState<ActivityTag | undefined>(undefined)
+  const [playerCountText, setPlayerCountText] = useState('')
+  const [playerActions, setPlayerActions] = useState('')
 
   useEffect(() => {
     if (visible) {
       setName('')
       setTag(undefined)
+      setPlayerCountText('')
+      setPlayerActions('')
     }
   }, [visible])
 
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0 && !saving
+  const parsedPlayerCount = parseInt(playerCountText, 10)
+  const playerCount = Number.isFinite(parsedPlayerCount) && parsedPlayerCount > 0 ? parsedPlayerCount : undefined
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Save activity">
@@ -56,11 +62,32 @@ export function SaveSheet({ visible, saving, error, onClose, onSave }: SaveSheet
         })}
       </ScrollView>
 
+      <Text style={styles.label}>Player count (optional)</Text>
+      <TextInput
+        value={playerCountText}
+        onChangeText={setPlayerCountText}
+        placeholder="e.g. 8"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="number-pad"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Player actions (optional)</Text>
+      <TextInput
+        value={playerActions}
+        onChangeText={setPlayerActions}
+        placeholder="What do players do in this drill?"
+        placeholderTextColor={colors.textTertiary}
+        style={[styles.input, styles.multilineInput]}
+        multiline
+        textAlignVertical="top"
+      />
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Pressable
         disabled={!canSave}
-        onPress={() => onSave({ name: trimmedName, tag })}
+        onPress={() => onSave({ name: trimmedName, tag, playerCount, playerActions: playerActions.trim() || undefined })}
         style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
       >
         {saving ? (
@@ -88,6 +115,11 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     marginBottom: spacing.lg,
+  },
+  multilineInput: {
+    height: undefined,
+    minHeight: 96,
+    paddingVertical: 12,
   },
   chipRow: {
     gap: spacing.sm,
