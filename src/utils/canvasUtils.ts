@@ -4,7 +4,7 @@ import { randomUUID } from 'expo-crypto'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Skia, type SkSVG } from '@shopify/react-native-skia'
 
-import { canvas } from '../theme/theme'
+import { canvas, colors } from '../theme/theme'
 import type { PlaceableToolType } from '../store/canvasStore'
 import type { PlacedObject } from '../types'
 
@@ -25,6 +25,27 @@ export const SCALE_MAX = 2.5
 // baked into cone.svg. (Other equipment still defaults to colors.canvasInk; the cone is the
 // one currently-colorable item, so it gets a color worth seeing by default.)
 export const CONE_DEFAULT_COLOR = '#EE7110'
+
+// Preset swatches for the selection toolbar's color action (cone/disc). A small fixed set
+// rather than a full color wheel, per design.md's "simple color picker" allowance.
+export const OBJECT_COLOR_SWATCHES = [
+  CONE_DEFAULT_COLOR,
+  colors.primary,
+  colors.error,
+  colors.info,
+  colors.warning,
+  colors.canvasInk,
+] as const
+
+// Default footprint for the two Shapes-tool objects, normalized like Zone/Goal's `width`
+// (fraction of canvas width; height fractions are of canvas height).
+export const ZONE_DEFAULT_WIDTH = 0.3
+export const ZONE_DEFAULT_HEIGHT = 0.2
+export const CIRCLE_ZONE_DEFAULT_RADIUS = 0.09
+
+// Floor on a zone's live-resized footprint (screen px) so dragging the corner handle past the
+// center can't collapse it to zero/negative size.
+export const MIN_ZONE_SIZE_PX = 40
 
 // Equipment SVG assets. The files in assets/icons/ are pre-cleaned and pre-colored (plain
 // XML presentation attributes, no DOCTYPE/CSS — see assets/icons/ history for why that matters
@@ -201,6 +222,10 @@ export function getObjectFootprint(object: PlacedObject, canvasSize: CanvasSize)
       return { width: object.width * canvasSize.width, height: object.width * canvasSize.width * MINI_GOAL_ASPECT }
     case 'zone':
       return { width: object.width * canvasSize.width, height: object.height * canvasSize.height }
+    case 'circle-zone': {
+      const diameter = object.radius * 2 * canvasSize.width
+      return { width: diameter, height: diameter }
+    }
     case 'label':
       return { width: canvas.equipment.size, height: canvas.equipment.size }
     case 'cone':
@@ -211,6 +236,38 @@ export function getObjectFootprint(object: PlacedObject, canvasSize: CanvasSize)
     case 'ball':
       return { width: canvas.equipment.size, height: canvas.equipment.size }
   }
+}
+
+// Point-in-object hit test used for tap-to-select. Equipment/markers/circles use a simple
+// footprint-radius circular test (matches their roughly-round on-canvas footprint); 'zone'
+// (rectangle) instead tests against its actual rotated rectangular bounds, since a resizable
+// zone can be much larger than a fixed hit radius — without this, tapping anywhere inside a
+// large rectangle except near its center would fail to select it.
+export function isPointInObjectHit(
+  object: PlacedObject,
+  eventX: number,
+  eventY: number,
+  canvasSize: CanvasSize
+): boolean {
+  'worklet'
+  const cx = object.x * canvasSize.width
+  const cy = object.y * canvasSize.height
+
+  if (object.type === 'zone') {
+    const footprint = getObjectFootprint(object, canvasSize)
+    const halfW = (footprint.width * object.scale) / 2
+    const halfH = (footprint.height * object.scale) / 2
+    const dx = eventX - cx
+    const dy = eventY - cy
+    const cos = Math.cos(object.rotation)
+    const sin = Math.sin(object.rotation)
+    const localX = dx * cos + dy * sin
+    const localY = -dx * sin + dy * cos
+    return Math.abs(localX) <= halfW && Math.abs(localY) <= halfH
+  }
+
+  const radius = object.type === 'circle-zone' ? object.radius * canvasSize.width * object.scale : HIT_RADIUS * object.scale
+  return Math.hypot(eventX - cx, eventY - cy) <= radius
 }
 
 export interface ScreenBox {
@@ -334,5 +391,9 @@ export function createDefaultObject(
       return { ...base, type: 'ball', variant: 'bw' }
     case 'ball-color':
       return { ...base, type: 'ball', variant: 'color' }
+    case 'shape-rect':
+      return { ...base, type: 'zone', width: ZONE_DEFAULT_WIDTH, height: ZONE_DEFAULT_HEIGHT }
+    case 'shape-circle':
+      return { ...base, type: 'circle-zone', radius: CIRCLE_ZONE_DEFAULT_RADIUS }
   }
 }

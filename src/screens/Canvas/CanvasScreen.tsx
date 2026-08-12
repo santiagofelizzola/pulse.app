@@ -9,11 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import { colors, layout, spacing, typography } from '../../theme/theme'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
-import type { PlaceableToolType } from '../../store/canvasStore'
+import type { PlaceableToolType, ShapeToolType } from '../../store/canvasStore'
 import type { ActivityTag, CanvasBackground, CanvasData, PlacedObject, PlayerMarker } from '../../types'
 import { ArrowDrawPreview, ArrowPath } from './components/ArrowPath'
 import { BackgroundPicker } from './components/BackgroundPicker'
-import { CanvasObject } from './components/CanvasObject'
+import { CanvasObject, ShapePlacePreview } from './components/CanvasObject'
+import { ColorPicker } from './components/ColorPicker'
 import { getPitchAspectRatio, PitchBackground } from './components/PitchBackground'
 import { PlayerMarkerOverlay } from './components/PlayerMarkerOverlay'
 import { SaveSheet } from './components/SaveSheet'
@@ -48,9 +49,12 @@ export default function CanvasScreen() {
     selectTool,
     selectBackground,
     place,
+    placeShape,
     moveObject,
     rotateObject,
     scaleObject,
+    resizeObject,
+    setObjectColor,
     drawArrow,
     moveArrow,
     selectItem,
@@ -66,6 +70,7 @@ export default function CanvasScreen() {
 
   const [areaSize, setAreaSize] = useState({ width: 0, height: 0 })
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [saveSheetOpen, setSaveSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -121,6 +126,13 @@ export default function CanvasScreen() {
     [place, canvasSize]
   )
 
+  const handlePlaceShape = useCallback(
+    (type: ShapeToolType, p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      placeShape(type, p1, p2, canvasSize)
+    },
+    [placeShape, canvasSize]
+  )
+
   const handleSelectBackground = useCallback(
     (next: CanvasBackground) => {
       selectBackground(next)
@@ -140,6 +152,8 @@ export default function CanvasScreen() {
     onMoveObject: moveObject,
     onRotateObject: rotateObject,
     onScaleObject: scaleObject,
+    onResizeObject: resizeObject,
+    onPlaceShape: handlePlaceShape,
     onDrawArrow: drawArrow,
     onMoveArrow: moveArrow,
   })
@@ -168,6 +182,19 @@ export default function CanvasScreen() {
     [deselectAll, background, objects, arrows, markSaved, navigation]
   )
 
+  // Cone and Disc are the only PlacedObject types carrying a `color` field — gate the toolbar's
+  // color action to them (see design.md §7's "Per-object color (cone & disc)").
+  const colorableSelected =
+    selected?.kind === 'object' && (selected.object.type === 'cone' || selected.object.type === 'disc') ? selected.object : null
+
+  const handleSelectColor = useCallback(
+    (color: string) => {
+      if (colorableSelected) setObjectColor(colorableSelected.id, color)
+      setColorPickerOpen(false)
+    },
+    [colorableSelected, setObjectColor]
+  )
+
   const playerObjects = objects.filter(isPlayerMarker)
   const otherObjects = objects.filter((object): object is Exclude<PlacedObject, PlayerMarker> => !isPlayerMarker(object))
   const isCanvasEmpty = objects.length === 0 && arrows.length === 0
@@ -192,7 +219,10 @@ export default function CanvasScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.topBar, { paddingTop: insets.top }]}>
+      {/* Pressable so a tap on the bar's background (not one of its own buttons) also dismisses
+          the selection toolbar — nested Pressables (the buttons below) still win for their own
+          bounds, this only fires for the surrounding chrome. */}
+      <Pressable onPress={deselectAll} style={[styles.topBar, { paddingTop: insets.top }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop} style={styles.topBarButton}>
           <X size={22} color={colors.textPrimary} />
         </Pressable>
@@ -216,7 +246,7 @@ export default function CanvasScreen() {
             <Save size={22} color={isCanvasEmpty ? colors.textDisabled : colors.textPrimary} />
           </Pressable>
         </View>
-      </View>
+      </Pressable>
 
       <View style={styles.canvasArea} onLayout={handleAreaLayout}>
         {canvasWidth > 0 && canvasHeight > 0 ? (
@@ -239,6 +269,9 @@ export default function CanvasScreen() {
                     )
                   )}
                   {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
+                  {tool.kind === 'place' && (tool.type === 'shape-rect' || tool.type === 'shape-circle') ? (
+                    <ShapePlacePreview type={tool.type} interaction={interaction} />
+                  ) : null}
                 </Canvas>
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   {playerObjects.map((object) => (
@@ -256,6 +289,7 @@ export default function CanvasScreen() {
               canvasSize={canvasSize}
               hidden={isInteracting}
               onDuplicate={duplicateSelected}
+              onColor={colorableSelected ? () => setColorPickerOpen(true) : undefined}
               onBringToFront={bringSelectedToFront}
               onDelete={deleteSelected}
             />
@@ -263,15 +297,22 @@ export default function CanvasScreen() {
         ) : null}
       </View>
 
-      <View style={[styles.toolTray, { paddingBottom: insets.bottom + spacing.sm }]}>
+      <Pressable onPress={deselectAll} style={[styles.toolTray, { paddingBottom: insets.bottom + spacing.sm }]}>
         <ToolPalette activeTool={tool} onSelectTool={selectTool} />
-      </View>
+      </Pressable>
 
       <BackgroundPicker
         visible={pickerOpen}
         selected={background}
         onSelect={handleSelectBackground}
         onClose={() => setPickerOpen(false)}
+      />
+
+      <ColorPicker
+        visible={colorPickerOpen}
+        selectedColor={colorableSelected?.color}
+        onSelect={handleSelectColor}
+        onClose={() => setColorPickerOpen(false)}
       />
 
       <SaveSheet

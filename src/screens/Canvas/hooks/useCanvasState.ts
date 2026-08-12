@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
-import { getSelectedItem, useCanvasStore, type CanvasTool } from '../../../store/canvasStore'
+import { getSelectedItem, useCanvasStore, type CanvasTool, type ShapeToolType } from '../../../store/canvasStore'
 import type { ArrowType, CanvasBackground } from '../../../types'
 
 interface CanvasSize {
@@ -36,9 +36,12 @@ export function useCanvasState() {
   const setTool = useCanvasStore((state) => state.setTool)
   const selectItem = useCanvasStore((state) => state.selectItem)
   const placeObject = useCanvasStore((state) => state.placeObject)
+  const placeShapeFromPoints = useCanvasStore((state) => state.placeShapeFromPoints)
   const moveObject = useCanvasStore((state) => state.moveObject)
   const rotateObject = useCanvasStore((state) => state.rotateObject)
   const scaleObject = useCanvasStore((state) => state.scaleObject)
+  const resizeObject = useCanvasStore((state) => state.resizeObject)
+  const setObjectColor = useCanvasStore((state) => state.setObjectColor)
   const addArrow = useCanvasStore((state) => state.addArrow)
   const moveArrow = useCanvasStore((state) => state.moveArrow)
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected)
@@ -72,6 +75,13 @@ export function useCanvasState() {
     [placeObject]
   )
 
+  const placeShape = useCallback(
+    (type: ShapeToolType, p1: { x: number; y: number }, p2: { x: number; y: number }, canvasSize: CanvasSize) => {
+      placeShapeFromPoints(type, p1, p2, canvasSize)
+    },
+    [placeShapeFromPoints]
+  )
+
   const drawArrow = useCallback(
     (type: ArrowType, points: { x: number; y: number }[]) => {
       addArrow(type, points)
@@ -94,9 +104,12 @@ export function useCanvasState() {
     selectTool,
     selectBackground,
     place,
+    placeShape,
     moveObject,
     rotateObject,
     scaleObject,
+    resizeObject,
+    setObjectColor,
     drawArrow,
     moveArrow,
     selectItem,

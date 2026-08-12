@@ -45,6 +45,14 @@ export interface Zone extends BaseCanvasObject {
   height: number
 }
 
+// Circle counterpart to Zone (rectangle) — a separate per-type interface rather than a
+// 'shape' + variant field, matching the established pattern (see architecture.md's
+// "Equipment objects" decisions-log entry re: per-type interfaces over generic+variant).
+export interface CircleZone extends BaseCanvasObject {
+  type: 'circle-zone'
+  radius: number
+}
+
 export interface Label extends BaseCanvasObject {
   type: 'label'
   text: string
@@ -52,7 +60,7 @@ export interface Label extends BaseCanvasObject {
 
 export type PlacedObject =
   | PlayerMarker | Cone | Pole | Ladder | Flag | Disc
-  | Goal | Ball | Zone | Label
+  | Goal | Ball | Zone | CircleZone | Label
 
 export interface Arrow {
   id: string

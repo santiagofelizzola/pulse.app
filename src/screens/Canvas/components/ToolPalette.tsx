@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { UserRound } from 'lucide-react-native'
+import { Circle as CircleIcon, Square, UserRound } from 'lucide-react-native'
 import { Path as SvgPath, Svg, SvgXml } from 'react-native-svg'
 
 import { canvas, colors, fonts, radius, shadow, spacing, typography } from '../../../theme/theme'
@@ -27,6 +27,11 @@ const PLAYER_PRESETS: Array<{ tool: PlaceableToolType; label: string }> = [
   { tool: 'player-blank', label: '' },
   { tool: 'player-gk', label: 'GK' },
   { tool: 'player-co', label: 'Co' },
+]
+
+const SHAPE_TOOLS: Array<{ tool: PlaceableToolType; label: string }> = [
+  { tool: 'shape-rect', label: 'Rectangle' },
+  { tool: 'shape-circle', label: 'Circle' },
 ]
 
 const ARROW_TOOLS: Array<{ type: ArrowType; label: string }> = [
@@ -78,6 +83,10 @@ function ToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boole
       return <SvgToolIcon assetKey="ball-bw" />
     case 'ball-color':
       return <SvgToolIcon assetKey="ball-color" />
+    case 'shape-rect':
+      return <Square size={ICON_SIZE} color={selected ? colors.primary : colors.textPrimary} strokeWidth={1.75} />
+    case 'shape-circle':
+      return <CircleIcon size={ICON_SIZE} color={selected ? colors.primary : colors.textPrimary} strokeWidth={1.75} />
     default:
       return null
   }
@@ -168,6 +177,23 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
         </Pressable>
 
         {EQUIPMENT_TOOLS.map(({ tool, label }) => {
+          const selected = isPlaceToolActive(activeTool, tool)
+          return (
+            <Pressable
+              key={tool}
+              accessibilityLabel={label}
+              onPress={() => {
+                setPlayerFlyoutOpen(false)
+                onSelectTool({ kind: 'place', type: tool })
+              }}
+              style={[styles.toolButton, selected && styles.toolButtonSelected]}
+            >
+              <ToolIcon tool={tool} selected={selected} />
+            </Pressable>
+          )
+        })}
+
+        {SHAPE_TOOLS.map(({ tool, label }) => {
           const selected = isPlaceToolActive(activeTool, tool)
           return (
             <Pressable

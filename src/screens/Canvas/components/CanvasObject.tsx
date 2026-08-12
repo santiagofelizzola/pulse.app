@@ -1,8 +1,9 @@
-import { Circle, Group, ImageSVG, Line, Path, RoundedRect } from '@shopify/react-native-skia'
+import { Circle, Group, ImageSVG, Line, Path, Rect, RoundedRect, Skia } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { canvas, colors } from '../../../theme/theme'
 import { CONE_DEFAULT_COLOR, EQUIPMENT_ASSETS, useEquipmentSvg, type EquipmentAssetKey } from '../../../utils/canvasUtils'
+import type { ShapeToolType } from '../../../store/canvasStore'
 import type { PlacedObject } from '../../../types'
 import type { InteractionState } from '../hooks/useCanvasGestures'
 
@@ -76,6 +77,44 @@ function EquipmentSvgShape({
   )
 }
 
+// Rectangle shape (Shapes tool). Unlike every other object, its footprint resizes
+// independently in width/height rather than through the shared uniform `scale` multiplier —
+// see useCanvasGestures.ts's 'resize' mode — so its dimensions are read from the live
+// interaction state directly, the same way CanvasObject's `transform` reads live dx/dy/rotation.
+function ZoneShape({
+  object,
+  canvasSize,
+  interaction,
+}: {
+  object: Extract<PlacedObject, { type: 'zone' }>
+  canvasSize: { width: number; height: number }
+  interaction: SharedValue<InteractionState>
+}) {
+  const rect = useDerivedValue(() => {
+    const live = interaction.value
+    const isResizing = live.targetId === object.id && live.mode === 'resize'
+    const width = isResizing ? live.resizeWidth : object.width * canvasSize.width
+    const height = isResizing ? live.resizeHeight : object.height * canvasSize.height
+    return Skia.XYWHRect(-width / 2, -height / 2, width, height)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [object.id, object.width, object.height, canvasSize.width, canvasSize.height])
+
+  return <Rect rect={rect} color={colors.canvasInk} style="stroke" strokeWidth={1} />
+}
+
+// Circle shape (Shapes tool) — resizes uniformly via the outer Group's `transform`, same as
+// every non-zone object, so no live-interaction read is needed here.
+function CircleZoneShape({
+  object,
+  canvasSize,
+}: {
+  object: Extract<PlacedObject, { type: 'circle-zone' }>
+  canvasSize: { width: number; height: number }
+}) {
+  const r = object.radius * canvasSize.width
+  return <Circle cx={0} cy={0} r={r} color={colors.canvasInk} style="stroke" strokeWidth={1} />
+}
+
 export function CanvasObject({ object, canvasSize, interaction }: CanvasObjectProps) {
   const transform = useDerivedValue(() => {
     const baseX = object.x * canvasSize.width
@@ -141,7 +180,57 @@ export function CanvasObject({ object, canvasSize, interaction }: CanvasObjectPr
           <EquipmentSvgShape assetKey="mini-goal" targetWidth={object.width * canvasSize.width} />
         </Group>
       )
+    case 'zone':
+      return (
+        <Group transform={transform}>
+          <ZoneShape object={object} canvasSize={canvasSize} interaction={interaction} />
+        </Group>
+      )
+    case 'circle-zone':
+      return (
+        <Group transform={transform}>
+          <CircleZoneShape object={object} canvasSize={canvasSize} />
+        </Group>
+      )
     default:
       return null
   }
+}
+
+interface ShapePlacePreviewProps {
+  type: ShapeToolType
+  interaction: SharedValue<InteractionState>
+}
+
+// Live preview while a shape-placement drag is in progress (tool armed, finger down but not yet
+// released) — mirrors ArrowDrawPreview's approach (see ArrowPath.tsx): reads live drag points
+// straight off the shared interaction value so this can stay mounted for as long as the tool is
+// armed, resolving to a zero-size (invisible) shape whenever the gesture isn't actively placing.
+export function ShapePlacePreview({ type, interaction }: ShapePlacePreviewProps) {
+  const rect = useDerivedValue(() => {
+    const live = interaction.value
+    if (live.mode !== 'placeShape') return Skia.XYWHRect(0, 0, 0, 0)
+    const x = Math.min(live.drawStart.x, live.drawCurrent.x)
+    const y = Math.min(live.drawStart.y, live.drawCurrent.y)
+    return Skia.XYWHRect(x, y, Math.abs(live.drawCurrent.x - live.drawStart.x), Math.abs(live.drawCurrent.y - live.drawStart.y))
+  })
+
+  const cx = useDerivedValue(() => {
+    const live = interaction.value
+    return live.mode === 'placeShape' ? (live.drawStart.x + live.drawCurrent.x) / 2 : 0
+  })
+  const cy = useDerivedValue(() => {
+    const live = interaction.value
+    return live.mode === 'placeShape' ? (live.drawStart.y + live.drawCurrent.y) / 2 : 0
+  })
+  const r = useDerivedValue(() => {
+    const live = interaction.value
+    if (live.mode !== 'placeShape') return 0
+    return Math.hypot(live.drawCurrent.x - live.drawStart.x, live.drawCurrent.y - live.drawStart.y) / 2
+  })
+
+  if (type === 'shape-rect') {
+    return <Rect rect={rect} color={colors.canvasInk} style="stroke" strokeWidth={1} />
+  }
+  return <Circle cx={cx} cy={cy} r={r} color={colors.canvasInk} style="stroke" strokeWidth={1} />
 }

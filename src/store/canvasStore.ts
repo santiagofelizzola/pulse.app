@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 import { create } from 'zustand'
 
-import { createDefaultObject } from '../utils/canvasUtils'
+import { createDefaultObject, MIN_ZONE_SIZE_PX } from '../utils/canvasUtils'
 import type { Arrow, ArrowType, CanvasBackground, PlacedObject } from '../types'
 
 // Pole/Ladder/Flag/Disc are intentionally absent — dropped from the palette for a tighter
@@ -15,6 +15,8 @@ export type PlaceableToolType =
   | 'mini-goal'
   | 'ball-bw'
   | 'ball-color'
+  | 'shape-rect'
+  | 'shape-circle'
 
 export type CanvasTool =
   | { kind: 'select' }
@@ -27,6 +29,11 @@ interface CanvasSize {
   width: number
   height: number
 }
+
+// Rectangle/circle placement is a click-drag-release gesture (like drawing an arrow), not a
+// single tap — touch-down is one corner/diameter endpoint, release is the other. See
+// useCanvasGestures.ts's 'placeShape' interaction mode and placeShapeFromPoints below.
+export type ShapeToolType = Extract<PlaceableToolType, 'shape-rect' | 'shape-circle'>
 
 interface CanvasSnapshot {
   background: CanvasBackground
@@ -83,9 +90,17 @@ interface CanvasStoreState {
   selectItem: (id: string | null) => void
 
   placeObject: (tool: PlaceableToolType, x: number, y: number, canvasSize: CanvasSize) => void
+  placeShapeFromPoints: (
+    type: ShapeToolType,
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    canvasSize: CanvasSize
+  ) => void
   moveObject: (id: string, x: number, y: number) => void
   rotateObject: (id: string, rotation: number) => void
   scaleObject: (id: string, scale: number) => void
+  resizeObject: (id: string, width: number, height: number) => void
+  setObjectColor: (id: string, color: string) => void
 
   addArrow: (type: ArrowType, points: { x: number; y: number }[]) => void
   moveArrow: (id: string, dx: number, dy: number) => void
@@ -155,6 +170,44 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       const state = get()
       const object = createDefaultObject(tool, x, y, canvasSize, nextZIndex(state))
       commit({ objects: [...state.objects, object] })
+      // Equipment/player tools stay armed after placing (so several in a row don't need
+      // re-arming), and a touch mid-streak that happens to land on an existing object still
+      // selects it (see useCanvasGestures). Clearing selection here means that selection can't
+      // outlive the *next* placement — its toolbar won't linger through the rest of the streak.
+      set({ selectedId: null })
+    },
+
+    // p1 is the drag's touch-down point, p2 is its release point. A rectangle's opposite
+    // corners become its center + width/height; a circle's two points become the endpoints of
+    // a diameter. Floors the result at MIN_ZONE_SIZE_PX (screen px, converted to normalized
+    // fractions here) so a very short drag still produces a visible, usable shape.
+    placeShapeFromPoints: (type, p1, p2, canvasSize) => {
+      const state = get()
+      const cx = clamp01((p1.x + p2.x) / 2)
+      const cy = clamp01((p1.y + p2.y) / 2)
+      const zIndex = nextZIndex(state)
+      const base = { id: randomUUID(), x: cx, y: cy, rotation: 0, scale: 1, zIndex }
+
+      const object: PlacedObject =
+        type === 'shape-rect'
+          ? {
+              ...base,
+              type: 'zone',
+              width: Math.max(MIN_ZONE_SIZE_PX / canvasSize.width, Math.abs(p2.x - p1.x)),
+              height: Math.max(MIN_ZONE_SIZE_PX / canvasSize.height, Math.abs(p2.y - p1.y)),
+            }
+          : {
+              ...base,
+              type: 'circle-zone',
+              radius:
+                Math.max(MIN_ZONE_SIZE_PX / 2, Math.hypot((p2.x - p1.x) * canvasSize.width, (p2.y - p1.y) * canvasSize.height) / 2) /
+                canvasSize.width,
+            }
+
+      commit({ objects: [...state.objects, object] })
+      // Auto-select + disarm, same rationale as addArrow — the shape just placed is the likely
+      // next thing the coach adjusts (resize/move), not the start of another one.
+      set({ selectedId: object.id, tool: SELECT_TOOL })
     },
 
     moveObject: (id, x, y) => {
@@ -167,6 +220,26 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
 
     scaleObject: (id, scale) => {
       commit({ objects: get().objects.map((object) => (object.id === id ? { ...object, scale } : object)) })
+    },
+
+    // Independent width/height resize — only meaningful for 'zone' (rectangle), which is the
+    // one shape type resized by dragging its two dimensions directly rather than via the
+    // shared uniform `scale` multiplier every other object uses. See useCanvasGestures.ts's
+    // 'resize' interaction mode.
+    resizeObject: (id, width, height) => {
+      commit({
+        objects: get().objects.map((object) =>
+          object.id === id && object.type === 'zone' ? { ...object, width, height } : object
+        ),
+      })
+    },
+
+    setObjectColor: (id, color) => {
+      commit({
+        objects: get().objects.map((object) =>
+          object.id === id && (object.type === 'cone' || object.type === 'disc') ? { ...object, color } : object
+        ),
+      })
     },
 
     addArrow: (type, points) => {
