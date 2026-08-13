@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto'
 import type { SQLiteDatabase } from 'expo-sqlite'
 
 import { getDatabase } from '../database'
+import { resolveThumbnailUri } from '../../utils/thumbnailUtils'
 import type {
   Session,
   SessionActivity,
@@ -55,7 +56,7 @@ function toSessionActivity(row: SessionActivityRow): SessionActivity {
     playerCount: row.a_player_count ?? undefined,
     playerActions: row.a_player_actions ?? undefined,
     canvasData: JSON.parse(row.a_canvas_data) as CanvasData,
-    thumbnailUri: row.a_thumbnail_uri ?? undefined,
+    thumbnailUri: row.a_thumbnail_uri ? resolveThumbnailUri(row.a_thumbnail_uri) : undefined,
     createdAt: row.a_created_at,
     updatedAt: row.a_updated_at,
   }

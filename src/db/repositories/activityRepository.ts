@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
+import { resolveThumbnailUri, thumbnailFilename } from '../../utils/thumbnailUtils'
 import type { Activity, CreateActivityInput, ActivityTag, CanvasData } from '../../types'
 
 interface ActivityRow {
@@ -27,7 +28,7 @@ function toActivity(row: ActivityRow): Activity {
     playerCount: row.player_count ?? undefined,
     playerActions: row.player_actions ?? undefined,
     canvasData: JSON.parse(row.canvas_data) as CanvasData,
-    thumbnailUri: row.thumbnail_uri ?? undefined,
+    thumbnailUri: row.thumbnail_uri ? resolveThumbnailUri(row.thumbnail_uri) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -48,6 +49,11 @@ async function getById(id: string): Promise<Activity | null> {
 async function create(input: CreateActivityInput): Promise<Activity> {
   const db = getDatabase()
   const now = new Date().toISOString()
+  // input.thumbnailUri is the bare filename captureCanvasThumbnail returns — that's what gets
+  // persisted. The in-memory Activity we return holds the resolved, render-ready URI instead,
+  // so it's consistent with what getById/list hand back.
+  const storedThumbnail = input.thumbnailUri ?? null
+
   const activity: Activity = {
     id: randomUUID(),
     name: input.name,
@@ -57,7 +63,7 @@ async function create(input: CreateActivityInput): Promise<Activity> {
     playerCount: input.playerCount,
     playerActions: input.playerActions,
     canvasData: input.canvasData,
-    thumbnailUri: input.thumbnailUri,
+    thumbnailUri: storedThumbnail ? resolveThumbnailUri(storedThumbnail) : undefined,
     createdAt: now,
     updatedAt: now,
   }
@@ -73,7 +79,7 @@ async function create(input: CreateActivityInput): Promise<Activity> {
     activity.playerCount ?? null,
     activity.playerActions ?? null,
     JSON.stringify(activity.canvasData),
-    activity.thumbnailUri ?? null,
+    storedThumbnail,
     activity.createdAt,
     activity.updatedAt
   )
@@ -86,15 +92,27 @@ async function update(id: string, patch: Partial<CreateActivityInput>): Promise<
   const existing = await getById(id)
   if (!existing) return null
 
+  // patch.thumbnailUri, when provided, is a bare filename (same contract as CreateActivityInput).
+  // When omitted, existing.thumbnailUri is the already-resolved absolute URI from getById — it
+  // must be reduced back to a bare filename before writing, or we'd re-persist an absolute path
+  // and reintroduce the container-UUID staleness this fix removes.
+  const storedThumbnail =
+    patch.thumbnailUri !== undefined
+      ? patch.thumbnailUri
+      : existing.thumbnailUri
+        ? thumbnailFilename(existing.thumbnailUri)
+        : null
+
   const updated: Activity = {
     ...existing,
     ...patch,
+    thumbnailUri: storedThumbnail ? resolveThumbnailUri(storedThumbnail) : undefined,
     updatedAt: new Date().toISOString(),
   }
 
   db.runSync(
     `UPDATE activities
-     SET name = ?, tag = ?, duration_minutes = ?, notes = ?, player_count = ?, player_actions = ?, canvas_data = ?, updated_at = ?
+     SET name = ?, tag = ?, duration_minutes = ?, notes = ?, player_count = ?, player_actions = ?, canvas_data = ?, thumbnail_uri = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.tag ?? null,
@@ -103,6 +121,7 @@ async function update(id: string, patch: Partial<CreateActivityInput>): Promise<
     updated.playerCount ?? null,
     updated.playerActions ?? null,
     JSON.stringify(updated.canvasData),
+    storedThumbnail,
     updated.updatedAt,
     id
   )

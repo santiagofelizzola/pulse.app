@@ -19,6 +19,9 @@ export function ActivityPickerSheet({ visible, onClose, onSelect }: ActivityPick
   const [activities, setActivities] = useState<Activity[]>([])
   const [selectedTag, setSelectedTag] = useState<ActivityTag | undefined>(undefined)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // A stored thumbnail_uri doesn't guarantee the file is still reachable — track failed loads by
+  // activity id and fall back to the placeholder instead of leaving a broken image.
+  const [failedThumbnailIds, setFailedThumbnailIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (visible) {
@@ -64,8 +67,12 @@ export function ActivityPickerSheet({ visible, onClose, onSelect }: ActivityPick
             const selected = selectedIds.has(item.id)
             return (
               <Pressable onPress={() => toggleSelected(item.id)} style={styles.row}>
-                {item.thumbnailUri ? (
-                  <Image source={{ uri: item.thumbnailUri }} style={styles.thumbnail} />
+                {item.thumbnailUri && !failedThumbnailIds.has(item.id) ? (
+                  <Image
+                    source={{ uri: item.thumbnailUri }}
+                    style={styles.thumbnail}
+                    onError={() => setFailedThumbnailIds((prev) => new Set(prev).add(item.id))}
+                  />
                 ) : (
                   <View style={styles.thumbnailPlaceholder} />
                 )}

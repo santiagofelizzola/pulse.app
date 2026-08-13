@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Pencil, Trash2 } from 'lucide-react-native'
@@ -22,12 +22,19 @@ export default function ActivityDetailScreen() {
   const [editSheetOpen, setEditSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // A stored thumbnail_uri doesn't guarantee the file is still reachable — fall back to the
+  // placeholder instead of leaving a broken image.
+  const [imageFailed, setImageFailed] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
       activityRepository.getById(params.activityId).then(setActivity)
     }, [params.activityId])
   )
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [activity?.thumbnailUri])
 
   const handleDelete = useCallback(() => {
     if (!activity) return
@@ -100,11 +107,12 @@ export default function ActivityDetailScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.content}>
-        {activity.thumbnailUri ? (
+        {activity.thumbnailUri && !imageFailed ? (
           <Image
             source={{ uri: activity.thumbnailUri }}
             style={[styles.thumbnail, { aspectRatio: thumbnailAspectRatio }]}
             resizeMode="contain"
+            onError={() => setImageFailed(true)}
           />
         ) : (
           <View style={[styles.thumbnailPlaceholder, { aspectRatio: thumbnailAspectRatio }]} />

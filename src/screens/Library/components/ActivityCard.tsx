@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { colors, radius, spacing, typography } from '../../../theme/theme'
@@ -10,10 +11,18 @@ interface ActivityCardProps {
 }
 
 export function ActivityCard({ activity, onPress }: ActivityCardProps) {
+  // A stored thumbnail_uri doesn't guarantee the file is still reachable (e.g. a stale path from
+  // before migration 005) — fall back to the placeholder instead of leaving a broken image.
+  const [imageFailed, setImageFailed] = useState(false)
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
-      {activity.thumbnailUri ? (
-        <Image source={{ uri: activity.thumbnailUri }} style={styles.thumbnail} />
+      {activity.thumbnailUri && !imageFailed ? (
+        <Image
+          source={{ uri: activity.thumbnailUri }}
+          style={styles.thumbnail}
+          onError={() => setImageFailed(true)}
+        />
       ) : (
         <View style={styles.thumbnailPlaceholder} />
       )}

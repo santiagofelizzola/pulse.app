@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, GripVertical, Image as ImageIcon, Trash2 } from 'lucide-react-native'
+import { useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -51,6 +52,9 @@ export function SessionBlockCard({
   onRemove,
 }: SessionBlockCardProps) {
   const color = blockTypeColor(block.blockType)
+  // A stored thumbnail_uri doesn't guarantee the file is still reachable — fall back to the
+  // placeholder instead of leaving a broken image.
+  const [imageFailed, setImageFailed] = useState(false)
   const coachingLines = block.coachingPoints
     ? block.coachingPoints.split('\n').map((line) => line.trim()).filter(Boolean)
     : []
@@ -112,8 +116,12 @@ export function SessionBlockCard({
       <View style={[styles.bar, { backgroundColor: color }]} />
       <View style={styles.content}>
         <View style={styles.header}>
-          {block.activity.thumbnailUri ? (
-            <Image source={{ uri: block.activity.thumbnailUri }} style={styles.thumbnail} />
+          {block.activity.thumbnailUri && !imageFailed ? (
+            <Image
+              source={{ uri: block.activity.thumbnailUri }}
+              style={styles.thumbnail}
+              onError={() => setImageFailed(true)}
+            />
           ) : (
             <View style={styles.thumbnailPlaceholder}>
               <ImageIcon size={18} color={colors.textTertiary} />
