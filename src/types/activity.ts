@@ -3,6 +3,7 @@ import type { CanvasData } from './canvas'
 export type ActivityTag =
   | 'warm-up' | 'technical' | 'possession' | 'pressing'
   | 'attacking' | 'defending' | 'transition' | 'finishing' | 'set-piece'
+  | 'rondo' | 'position-play' | 'training-game'
 
 export interface Activity {
   id: string                 // device-generated uuid

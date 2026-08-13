@@ -21,6 +21,7 @@ export interface PlayerMarker extends BaseCanvasObject {
   type: 'player'
   label: string        // '' = blank, or 1–2 chars
   teamIndex: 0 | 1
+  color?: string        // fill color; defaults to colors.surface (white) when unset
 }
 
 export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }

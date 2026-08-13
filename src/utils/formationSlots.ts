@@ -81,13 +81,24 @@ function roleAbbreviation(kind: LineKind, indexInLine: number, lineSize: number)
   return isEdge ? 'W' : 'ST'
 }
 
-function makePosition(x: number, y: number, role?: string): LineupPosition {
-  return { id: randomUUID(), label: '', role, x, y }
+function makePosition(x: number, y: number, role?: string, isKeeper?: boolean): LineupPosition {
+  return { id: randomUUID(), label: '', role, x, y, isKeeper }
+}
+
+// isKeeper is only present on positions generated after this field was added — any lineup
+// created (or already saved) before then has it undefined on every position, including its
+// actual goalkeeper, which would otherwise silently make keeperColor never apply to anything.
+// role still reads 'GK' for those older/loaded positions (that part of the data has always been
+// saved), so fall back to it. isKeeper stays authoritative when set, since a coach can freely
+// rename `role` in PositionEditSheet without that meaning they moved who's in goal.
+export function isKeeperPosition(position: Pick<LineupPosition, 'isKeeper' | 'role'>): boolean {
+  return position.isKeeper === true || position.role === 'GK'
 }
 
 // No formation semantics — reuses the squad size's first named formation's positions (a
 // sensible non-overlapping starting layout) but strips every role, so markers start blank and
-// fully free-drag/relabel rather than implying an unpicked formation's shape.
+// fully free-drag/relabel rather than implying an unpicked formation's shape. isKeeper is kept
+// (not stripped) so the goalkeeper slot still gets keeperColor even under 'custom'.
 function getCustomSlots(squadSize: SquadSize): LineupPosition[] {
   const firstFormation = getFormationOptions(squadSize)[0].value
   return getFormationSlots(squadSize, firstFormation).map((slot) => ({
@@ -101,7 +112,7 @@ export function getFormationSlots(squadSize: SquadSize, formation: Formation): L
   if (formation === 'custom') return getCustomSlots(squadSize)
 
   const lines = formation.split('-').map(Number)
-  const positions: LineupPosition[] = [makePosition(0.5, GK_Y, 'GK')]
+  const positions: LineupPosition[] = [makePosition(0.5, GK_Y, 'GK', true)]
 
   lines.forEach((count, lineIndex) => {
     const kind = lineKind(lineIndex, lines.length)

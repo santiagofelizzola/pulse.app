@@ -10,6 +10,9 @@ export const ACTIVITY_TAG_OPTIONS: Array<{ value: ActivityTag; label: string }> 
   { value: 'transition', label: 'Transition' },
   { value: 'finishing', label: 'Finishing' },
   { value: 'set-piece', label: 'Set piece' },
+  { value: 'rondo', label: 'Rondo' },
+  { value: 'position-play', label: 'Position play' },
+  { value: 'training-game', label: 'Training game' },
 ]
 
 export function activityTagLabel(tag: ActivityTag): string {

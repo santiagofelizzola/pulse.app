@@ -21,6 +21,8 @@ interface LineupRow {
   show_role_labels: number
   subs: string
   notes: string | null
+  team_color: string | null
+  keeper_color: string | null
   created_at: string
   updated_at: string
 }
@@ -37,6 +39,8 @@ function toLineup(row: LineupRow): Lineup {
     showRoleLabels: row.show_role_labels !== 0,
     subs: JSON.parse(row.subs) as SubEntry[],
     notes: row.notes ?? undefined,
+    teamColor: row.team_color ?? undefined,
+    keeperColor: row.keeper_color ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -68,13 +72,15 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     showRoleLabels: input.showRoleLabels ?? true,
     subs: input.subs ?? [],
     notes: input.notes,
+    teamColor: input.teamColor,
+    keeperColor: input.keeperColor,
     createdAt: now,
     updatedAt: now,
   }
 
   db.runSync(
-    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, team_color, keeper_color, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     lineup.id,
     lineup.name,
     lineup.matchDate ?? null,
@@ -85,6 +91,8 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     lineup.showRoleLabels ? 1 : 0,
     JSON.stringify(lineup.subs),
     lineup.notes ?? null,
+    lineup.teamColor ?? null,
+    lineup.keeperColor ?? null,
     lineup.createdAt,
     lineup.updatedAt
   )
@@ -105,7 +113,7 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
 
   db.runSync(
     `UPDATE lineups
-     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, updated_at = ?
+     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, team_color = ?, keeper_color = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.matchDate ?? null,
@@ -115,6 +123,8 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
     updated.showRoleLabels ? 1 : 0,
     JSON.stringify(updated.subs ?? []),
     updated.notes ?? null,
+    updated.teamColor ?? null,
+    updated.keeperColor ?? null,
     updated.updatedAt,
     id
   )

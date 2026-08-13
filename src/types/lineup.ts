@@ -17,6 +17,10 @@ export interface LineupPosition {
   role?: string              // positional slot abbreviation (GK, CB, ST, …), shown INSIDE the marker
   x: number                  // normalized 0..1 across the pitch
   y: number                  // normalized 0..1 down the pitch
+  // Set on the goalkeeper slot by getFormationSlots (and preserved through the 'custom' formation's
+  // role-stripping) — an explicit flag rather than inferring from role, since a coach can freely
+  // rename `role` in PositionEditSheet. Drives which of teamColor/keeperColor a marker renders in.
+  isKeeper?: boolean
 }
 
 // A structured substitute entry — starters remain the on-pitch LineupPositions above.
@@ -37,6 +41,10 @@ export interface Lineup {
   showRoleLabels?: boolean   // whether markers render their `role` text or appear blank; defaults true
   subs?: SubEntry[]
   notes?: string
+  // Marker fill colors — teamColor applies to every outfield position, keeperColor to the one
+  // flagged isKeeper. Both optional; unset renders the original default white marker.
+  teamColor?: string
+  keeperColor?: string
   createdAt: string
   updatedAt: string
 }
@@ -50,4 +58,6 @@ export interface CreateLineupInput {
   showRoleLabels?: boolean
   subs?: SubEntry[]
   notes?: string
+  teamColor?: string
+  keeperColor?: string
 }

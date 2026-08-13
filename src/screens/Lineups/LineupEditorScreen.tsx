@@ -3,16 +3,17 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { Alert, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Canvas } from '@shopify/react-native-skia'
 import { randomUUID } from 'expo-crypto'
-import { Eye, EyeOff, LayoutGrid, Save, X } from 'lucide-react-native'
+import { Eye, EyeOff, LayoutGrid, Palette, Save, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getPitchAspectRatio, PitchBackground } from '../Canvas/components/PitchBackground'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
 import type { RootStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
-import { getFormationSlots } from '../../utils/formationSlots'
+import { getFormationSlots, isKeeperPosition } from '../../utils/formationSlots'
 import type { CreateLineupInput, Formation, LineupPosition, SquadSize, SubEntry } from '../../types'
 import { FormationPicker } from './components/FormationPicker'
+import { LineupColorSheet } from './components/LineupColorSheet'
 import { LineupMarker } from './components/LineupMarker'
 import { LineupSaveSheet } from './components/LineupSaveSheet'
 import { PositionEditSheet } from './components/PositionEditSheet'
@@ -38,8 +39,11 @@ export default function LineupEditorScreen() {
   const [name, setName] = useState('')
   const [showRoleLabels, setShowRoleLabels] = useState(true)
   const [subs, setSubs] = useState<SubEntry[]>([])
+  const [teamColor, setTeamColor] = useState<string | undefined>(undefined)
+  const [keeperColor, setKeeperColor] = useState<string | undefined>(undefined)
 
   const [formationPickerOpen, setFormationPickerOpen] = useState(false)
+  const [colorSheetOpen, setColorSheetOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<LineupPosition | null>(null)
   const [subSheetOpen, setSubSheetOpen] = useState(false)
   const [editingSub, setEditingSub] = useState<SubEntry | null>(null)
@@ -63,6 +67,8 @@ export default function LineupEditorScreen() {
       setName(loaded.name)
       setShowRoleLabels(loaded.showRoleLabels ?? true)
       setSubs(loaded.subs ?? [])
+      setTeamColor(loaded.teamColor)
+      setKeeperColor(loaded.keeperColor)
       setPhase('pitch')
     })
   }, [lineupId])
@@ -151,6 +157,16 @@ export default function LineupEditorScreen() {
     dirtyRef.current = true
   }, [])
 
+  const handleSelectTeamColor = useCallback((color: string) => {
+    setTeamColor(color)
+    dirtyRef.current = true
+  }, [])
+
+  const handleSelectKeeperColor = useCallback((color: string) => {
+    setKeeperColor(color)
+    dirtyRef.current = true
+  }, [])
+
   const handleAddSubPress = useCallback(() => {
     setEditingSub(null)
     setSubSheetOpen(true)
@@ -192,6 +208,8 @@ export default function LineupEditorScreen() {
           positions,
           showRoleLabels,
           subs,
+          teamColor,
+          keeperColor,
         }
         if (lineupId) {
           await lineupRepository.update(lineupId, input)
@@ -207,7 +225,7 @@ export default function LineupEditorScreen() {
         setSaving(false)
       }
     },
-    [squadSize, formation, positions, showRoleLabels, subs, lineupId, navigation]
+    [squadSize, formation, positions, showRoleLabels, subs, teamColor, keeperColor, lineupId, navigation]
   )
 
   const isPitchEmpty = positions.length === 0
@@ -239,6 +257,9 @@ export default function LineupEditorScreen() {
                   <EyeOff size={22} color={colors.textPrimary} />
                 )}
               </Pressable>
+              <Pressable onPress={() => setColorSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+                <Palette size={22} color={colors.textPrimary} />
+              </Pressable>
               <Pressable
                 onPress={() => setSaveSheetOpen(true)}
                 disabled={isPitchEmpty}
@@ -269,6 +290,7 @@ export default function LineupEditorScreen() {
                       position={position}
                       canvasSize={canvasSize}
                       showRole={showRoleLabels}
+                      color={isKeeperPosition(position) ? keeperColor : teamColor}
                       onMove={handleMove}
                       onPress={handleMarkerPress}
                     />
@@ -314,6 +336,15 @@ export default function LineupEditorScreen() {
         position={editingPosition}
         onClose={() => setEditingPosition(null)}
         onSave={handleSavePosition}
+      />
+
+      <LineupColorSheet
+        visible={colorSheetOpen}
+        teamColor={teamColor}
+        keeperColor={keeperColor}
+        onSelectTeamColor={handleSelectTeamColor}
+        onSelectKeeperColor={handleSelectKeeperColor}
+        onClose={() => setColorSheetOpen(false)}
       />
 
       <SubEditSheet

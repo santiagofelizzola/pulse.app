@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.pulse"
+      "bundleIdentifier": "com.santiago.pulse"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.pulse"
+      "package": "com.santiago.pulse"
     },
     "web": {
       "favicon": "./assets/favicon.png"

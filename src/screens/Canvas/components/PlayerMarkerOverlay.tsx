@@ -2,6 +2,7 @@ import { StyleSheet, Text } from 'react-native'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import { canvas, colors, fonts, radius, typography } from '../../../theme/theme'
+import { getMarkerTextColor } from '../../../utils/canvasUtils'
 import type { PlayerMarker } from '../../../types'
 import type { InteractionState } from '../hooks/useCanvasGestures'
 
@@ -33,8 +34,8 @@ export function PlayerMarkerOverlay({ object, canvasSize, interaction }: PlayerM
   })
 
   return (
-    <Animated.View style={[styles.marker, style]}>
-      <Text style={styles.label}>{object.label}</Text>
+    <Animated.View style={[styles.marker, { backgroundColor: object.color ?? colors.surface }, style]}>
+      <Text style={[styles.label, { color: getMarkerTextColor(object.color) }]}>{object.label}</Text>
     </Animated.View>
   )
 }
@@ -45,7 +46,6 @@ const styles = StyleSheet.create({
     width: DIAMETER,
     height: DIAMETER,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
     borderWidth: canvas.marker.border,
     borderColor: colors.canvasInk,
     alignItems: 'center',
@@ -54,6 +54,5 @@ const styles = StyleSheet.create({
   label: {
     ...typography.label,
     fontFamily: fonts.semibold,
-    color: colors.canvasInk,
   },
 })

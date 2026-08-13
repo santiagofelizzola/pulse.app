@@ -66,15 +66,21 @@ export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, on
     box = getArrowScreenBounds(selected.arrow.points, canvasSize)
   }
 
-  const boxCenterX = (box.left + box.right) / 2
-  const flips = box.top < canvasSize.height * canvas.selectionTopFlipThreshold
-  const toolbarY = flips ? box.bottom + spacing.sm : box.top - spacing.sm - layout.touchTarget
-  const toolbarLeft = Math.min(Math.max(boxCenterX - toolbarWidth / 2, spacing.sm), canvasSize.width - toolbarWidth - spacing.sm)
-
   const rotateHandle = showHandles
     ? rotatePointAround({ x: 0, y: -handleHalfH - ROTATE_HANDLE_GAP }, rotation, handleCx, handleCy)
     : null
   const scaleHandle = showHandles ? rotatePointAround({ x: handleHalfW, y: handleHalfH }, rotation, handleCx, handleCy) : null
+
+  const boxCenterX = (box.left + box.right) / 2
+  const flips = box.top < canvasSize.height * canvas.selectionTopFlipThreshold
+  // The rotate handle floats above the object too (box.top - ROTATE_HANDLE_GAP), well inside the
+  // toolbar's default above-object span (box.top - spacing.sm - touchTarget) — left as box.top
+  // alone, the toolbar (painted after the handles, so on top) would sit directly over the handle,
+  // hiding it and eating its touch target. Clear whichever is higher of the object's own bounding
+  // box or the handle's own top edge (min, since y grows downward) so the toolbar floats above both.
+  const aboveAnchorY = rotateHandle ? Math.min(box.top, rotateHandle.y - HANDLE_SIZE / 2) : box.top
+  const toolbarY = flips ? box.bottom + spacing.sm : aboveAnchorY - spacing.sm - layout.touchTarget
+  const toolbarLeft = Math.min(Math.max(boxCenterX - toolbarWidth / 2, spacing.sm), canvasSize.width - toolbarWidth - spacing.sm)
 
   return (
     <>

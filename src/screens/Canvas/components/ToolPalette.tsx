@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Circle as CircleIcon, Square, UserRound } from 'lucide-react-native'
 import { Path as SvgPath, Svg, SvgXml } from 'react-native-svg'
 
-import { canvas, colors, fonts, radius, shadow, spacing, typography } from '../../../theme/theme'
+import { canvas, colors, fonts, layout, radius, shadow, spacing, typography } from '../../../theme/theme'
 import type { CanvasTool, PlaceableToolType } from '../../../store/canvasStore'
 import { CONE_DEFAULT_COLOR, useEquipmentSvgText, type EquipmentAssetKey } from '../../../utils/canvasUtils'
 import type { ArrowType } from '../../../types'
@@ -13,24 +13,19 @@ interface ToolPaletteProps {
   onSelectTool: (tool: CanvasTool) => void
 }
 
-const EQUIPMENT_TOOLS: Array<{ tool: PlaceableToolType; label: string }> = [
-  { tool: 'cone', label: 'Cone' },
-  { tool: 'goal', label: 'Goal' },
-  { tool: 'mini-goal', label: 'Mini goal' },
-  // Temporary: both ball variants get their own button so they can be compared on-canvas.
-  // Collapse to one permanent ball tool once a variant is picked.
-  { tool: 'ball-bw', label: 'Ball (black & white)' },
-  { tool: 'ball-color', label: 'Ball (color)' },
-]
-
 const PLAYER_PRESETS: Array<{ tool: PlaceableToolType; label: string }> = [
   { tool: 'player-blank', label: '' },
   { tool: 'player-gk', label: 'GK' },
   { tool: 'player-co', label: 'Co' },
 ]
 
-const SHAPE_TOOLS: Array<{ tool: PlaceableToolType; label: string }> = [
-  { tool: 'shape-rect', label: 'Rectangle' },
+const BALL_OPTIONS: Array<{ tool: PlaceableToolType; assetKey: EquipmentAssetKey; label: string; accessibilityLabel: string }> = [
+  { tool: 'ball-bw', assetKey: 'ball-bw', label: 'BW', accessibilityLabel: 'Ball (black & white)' },
+  { tool: 'ball-color', assetKey: 'ball-color', label: 'Color', accessibilityLabel: 'Ball (color)' },
+]
+
+const ZONE_OPTIONS: Array<{ tool: PlaceableToolType; label: string }> = [
+  { tool: 'shape-rect', label: 'Square' },
   { tool: 'shape-circle', label: 'Circle' },
 ]
 
@@ -71,25 +66,13 @@ function ConeToolIcon() {
   return <SvgXml xml={xml} width={ICON_SIZE} height={ICON_SIZE} color={CONE_DEFAULT_COLOR} />
 }
 
-function ToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boolean }) {
-  switch (tool) {
-    case 'cone':
-      return <ConeToolIcon />
-    case 'goal':
-      return <SvgToolIcon assetKey="goal" tint={selected ? colors.primary : undefined} />
-    case 'mini-goal':
-      return <SvgToolIcon assetKey="mini-goal" tint={selected ? colors.primary : undefined} />
-    case 'ball-bw':
-      return <SvgToolIcon assetKey="ball-bw" />
-    case 'ball-color':
-      return <SvgToolIcon assetKey="ball-color" />
-    case 'shape-rect':
-      return <Square size={ICON_SIZE} color={selected ? colors.primary : colors.textPrimary} strokeWidth={1.75} />
-    case 'shape-circle':
-      return <CircleIcon size={ICON_SIZE} color={selected ? colors.primary : colors.textPrimary} strokeWidth={1.75} />
-    default:
-      return null
-  }
+function ZoneToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boolean }) {
+  const color = selected ? colors.primary : colors.textPrimary
+  return tool === 'shape-circle' ? (
+    <CircleIcon size={ICON_SIZE} color={color} strokeWidth={1.75} />
+  ) : (
+    <Square size={ICON_SIZE} color={color} strokeWidth={1.75} />
+  )
 }
 
 // No stock icon set covers "squiggly dribble line" vs. "double solid shot line", so each arrow
@@ -141,89 +124,182 @@ function isDrawToolActive(activeTool: CanvasTool, type: ArrowType): boolean {
   return activeTool.kind === 'draw' && activeTool.type === type
 }
 
+// A top-level palette entry: 44px icon button with a caption label underneath (icon-over-label,
+// design.md §6's Tab Bar item layout), optionally with a popover of nested options anchored
+// above it (Player/Ball/Zone) — same floating-popover treatment for all three, not just Player.
+//
+// The popover is wider than its own 44px button, so it can't be centered on the button without
+// risking an overflow off whichever screen edge the button sits closer to (Player and Zone are
+// the leftmost item in their row, Ball the rightmost). `flyoutAlign` anchors the popover's own
+// left or right edge to the button's matching edge instead, so it always grows *inward* toward
+// the middle of the tray rather than centering and potentially spilling off-screen.
+function ToolSlot({
+  label,
+  accessibilityLabel,
+  selected,
+  onPress,
+  icon,
+  flyout,
+  flyoutAlign = 'start',
+}: {
+  label: string
+  accessibilityLabel?: string
+  selected: boolean
+  onPress: () => void
+  icon: ReactNode
+  flyout?: ReactNode
+  flyoutAlign?: 'start' | 'end'
+}) {
+  return (
+    <View style={styles.slot}>
+      {flyout ? (
+        <View style={[styles.flyoutAnchor, flyoutAlign === 'end' ? styles.flyoutAnchorEnd : styles.flyoutAnchorStart]}>
+          {flyout}
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityLabel={accessibilityLabel ?? label}
+        onPress={onPress}
+        style={[styles.toolButton, selected && styles.toolButtonSelected]}
+      >
+        {icon}
+      </Pressable>
+      <Text style={[styles.slotLabel, selected && styles.slotLabelSelected]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  )
+}
+
+type FlyoutKey = 'player' | 'ball' | 'zone' | null
+
 export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
-  const [playerFlyoutOpen, setPlayerFlyoutOpen] = useState(false)
-  const isPlayerToolActive = PLAYER_PRESETS.some((preset) => isPlaceToolActive(activeTool, preset.tool))
+  const [openFlyout, setOpenFlyout] = useState<FlyoutKey>(null)
+
+  const isPlayerActive = PLAYER_PRESETS.some((preset) => isPlaceToolActive(activeTool, preset.tool))
+  const isBallActive = BALL_OPTIONS.some((option) => isPlaceToolActive(activeTool, option.tool))
+  const isZoneActive = ZONE_OPTIONS.some((option) => isPlaceToolActive(activeTool, option.tool))
+
+  const toggleFlyout = (key: Exclude<FlyoutKey, null>) => setOpenFlyout((open) => (open === key ? null : key))
+
+  const selectAndClose = (tool: CanvasTool) => {
+    onSelectTool(tool)
+    setOpenFlyout(null)
+  }
 
   return (
     <View style={styles.wrapper}>
-      {playerFlyoutOpen ? (
-        <View style={styles.flyout}>
-          {PLAYER_PRESETS.map((preset) => (
-            <Pressable
-              key={preset.tool}
-              accessibilityLabel={preset.label || 'Blank player marker'}
-              onPress={() => {
-                onSelectTool({ kind: 'place', type: preset.tool })
-                setPlayerFlyoutOpen(false)
-              }}
-              style={styles.flyoutButton}
-            >
-              <View style={[styles.markerPreview, isPlaceToolActive(activeTool, preset.tool) && styles.markerPreviewActive]}>
-                <Text style={styles.markerPreviewLabel}>{preset.label}</Text>
+      <View style={styles.row}>
+        <ToolSlot
+          label="Player"
+          selected={isPlayerActive}
+          onPress={() => toggleFlyout('player')}
+          icon={<UserRound size={ICON_SIZE} color={isPlayerActive ? colors.primary : colors.textPrimary} />}
+          flyout={
+            openFlyout === 'player' ? (
+              <View style={styles.flyoutRow}>
+                {PLAYER_PRESETS.map((preset) => (
+                  <Pressable
+                    key={preset.tool}
+                    accessibilityLabel={preset.label || 'Blank player marker'}
+                    onPress={() => selectAndClose({ kind: 'place', type: preset.tool })}
+                    style={styles.flyoutButton}
+                  >
+                    <View style={[styles.markerPreview, isPlaceToolActive(activeTool, preset.tool) && styles.markerPreviewActive]}>
+                      <Text style={styles.markerPreviewLabel}>{preset.label}</Text>
+                    </View>
+                  </Pressable>
+                ))}
               </View>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+            ) : null
+          }
+        />
 
-      <View style={styles.grid}>
-        <Pressable
-          accessibilityLabel="Player"
-          onPress={() => setPlayerFlyoutOpen((open) => !open)}
-          style={[styles.toolButton, isPlayerToolActive && styles.toolButtonSelected]}
-        >
-          <UserRound size={ICON_SIZE} color={isPlayerToolActive ? colors.primary : colors.textPrimary} />
-        </Pressable>
+        <ToolSlot
+          label="Cone"
+          selected={isPlaceToolActive(activeTool, 'cone')}
+          onPress={() => selectAndClose({ kind: 'place', type: 'cone' })}
+          icon={<ConeToolIcon />}
+        />
 
-        {EQUIPMENT_TOOLS.map(({ tool, label }) => {
-          const selected = isPlaceToolActive(activeTool, tool)
-          return (
-            <Pressable
-              key={tool}
-              accessibilityLabel={label}
-              onPress={() => {
-                setPlayerFlyoutOpen(false)
-                onSelectTool({ kind: 'place', type: tool })
-              }}
-              style={[styles.toolButton, selected && styles.toolButtonSelected]}
-            >
-              <ToolIcon tool={tool} selected={selected} />
-            </Pressable>
-          )
-        })}
+        <ToolSlot
+          label="Goal"
+          selected={isPlaceToolActive(activeTool, 'goal')}
+          onPress={() => selectAndClose({ kind: 'place', type: 'goal' })}
+          icon={<SvgToolIcon assetKey="goal" tint={isPlaceToolActive(activeTool, 'goal') ? colors.primary : undefined} />}
+        />
 
-        {SHAPE_TOOLS.map(({ tool, label }) => {
-          const selected = isPlaceToolActive(activeTool, tool)
-          return (
-            <Pressable
-              key={tool}
-              accessibilityLabel={label}
-              onPress={() => {
-                setPlayerFlyoutOpen(false)
-                onSelectTool({ kind: 'place', type: tool })
-              }}
-              style={[styles.toolButton, selected && styles.toolButtonSelected]}
-            >
-              <ToolIcon tool={tool} selected={selected} />
-            </Pressable>
-          )
-        })}
+        <ToolSlot
+          label="Mini-goal"
+          selected={isPlaceToolActive(activeTool, 'mini-goal')}
+          onPress={() => selectAndClose({ kind: 'place', type: 'mini-goal' })}
+          icon={<SvgToolIcon assetKey="mini-goal" tint={isPlaceToolActive(activeTool, 'mini-goal') ? colors.primary : undefined} />}
+        />
+
+        <ToolSlot
+          label="Ball"
+          selected={isBallActive}
+          onPress={() => toggleFlyout('ball')}
+          flyoutAlign="end"
+          // The parent button always shows the color-ball asset as "Ball"'s representative icon
+          // (like Player's fixed UserRound regardless of which preset is active below it) — the
+          // primaryTint backdrop, not an icon swap, is what signals a variant is active.
+          icon={<SvgToolIcon assetKey="ball-color" />}
+          flyout={
+            openFlyout === 'ball' ? (
+              <View style={styles.flyoutRow}>
+                {BALL_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option.tool}
+                    accessibilityLabel={option.accessibilityLabel}
+                    onPress={() => selectAndClose({ kind: 'place', type: option.tool })}
+                    style={styles.flyoutButton}
+                  >
+                    <SvgToolIcon assetKey={option.assetKey} />
+                    <Text style={styles.flyoutLabel}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null
+          }
+        />
+      </View>
+
+      <View style={styles.row}>
+        <ToolSlot
+          label="Zone"
+          selected={isZoneActive}
+          onPress={() => toggleFlyout('zone')}
+          icon={<Square size={ICON_SIZE} color={isZoneActive ? colors.primary : colors.textPrimary} strokeWidth={1.75} />}
+          flyout={
+            openFlyout === 'zone' ? (
+              <View style={styles.flyoutRow}>
+                {ZONE_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option.tool}
+                    accessibilityLabel={option.label}
+                    onPress={() => selectAndClose({ kind: 'place', type: option.tool })}
+                    style={styles.flyoutButton}
+                  >
+                    <ZoneToolIcon tool={option.tool} selected={isPlaceToolActive(activeTool, option.tool)} />
+                    <Text style={styles.flyoutLabel}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null
+          }
+        />
 
         {ARROW_TOOLS.map(({ type, label }) => {
           const selected = isDrawToolActive(activeTool, type)
           return (
-            <Pressable
+            <ToolSlot
               key={type}
-              accessibilityLabel={label}
-              onPress={() => {
-                setPlayerFlyoutOpen(false)
-                onSelectTool({ kind: 'draw', type })
-              }}
-              style={[styles.toolButton, selected && styles.toolButtonSelected]}
-            >
-              <ArrowToolIcon type={type} selected={selected} />
-            </Pressable>
+              label={label}
+              selected={selected}
+              onPress={() => selectAndClose({ kind: 'draw', type })}
+              icon={<ArrowToolIcon type={type} selected={selected} />}
+            />
           )
         })}
       </View>
@@ -233,13 +309,15 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    position: 'relative',
+    gap: spacing.md,
   },
-  grid: {
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  slot: {
+    position: 'relative',
+    alignItems: 'center',
   },
   // Buttons are sized to the 44px touch-target minimum already, so no hitSlop is added —
   // hitSlop expansion on adjacently-packed 44px buttons with an 8px gap would make neighbors'
@@ -254,11 +332,30 @@ const styles = StyleSheet.create({
   toolButtonSelected: {
     backgroundColor: colors.primaryTint,
   },
-  flyout: {
+  slotLabel: {
+    ...typography.caption,
+    fontFamily: fonts.medium,
+    color: colors.textSecondary,
+    marginTop: spacing.xxs,
+  },
+  slotLabelSelected: {
+    color: colors.primary,
+  },
+  // Anchors a nested-option popover above its own button. Only one of left/right is set (by
+  // flyoutAnchorStart/End below) so the popover's width stays content-sized and grows away from
+  // whichever screen edge its button is closest to, instead of centering and risking overflow.
+  flyoutAnchor: {
     position: 'absolute',
-    left: 0,
     bottom: '100%',
     marginBottom: spacing.sm,
+  },
+  flyoutAnchorStart: {
+    left: 0,
+  },
+  flyoutAnchorEnd: {
+    right: 0,
+  },
+  flyoutRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -269,14 +366,20 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     ...shadow.md,
   },
-  // 44px touch target with the 30px marker preview centered inside — matches design.md's
-  // "transparent hit area padding around the 30px visual" rule without needing hitSlop.
   flyoutButton: {
-    width: canvas.toolButton,
-    height: canvas.toolButton,
+    minWidth: layout.touchTarget,
+    minHeight: layout.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.xxs,
   },
+  flyoutLabel: {
+    ...typography.caption,
+    fontFamily: fonts.medium,
+    color: colors.textSecondary,
+  },
+  // 44px touch target with the 30px marker preview centered inside — matches design.md's
+  // "transparent hit area padding around the 30px visual" rule without needing hitSlop.
   markerPreview: {
     width: canvas.marker.diameter,
     height: canvas.marker.diameter,

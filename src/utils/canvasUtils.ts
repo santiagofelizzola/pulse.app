@@ -26,8 +26,8 @@ export const SCALE_MAX = 2.5
 // one currently-colorable item, so it gets a color worth seeing by default.)
 export const CONE_DEFAULT_COLOR = '#EE7110'
 
-// Preset swatches for the selection toolbar's color action (cone/disc). A small fixed set
-// rather than a full color wheel, per design.md's "simple color picker" allowance.
+// Preset swatches for the selection toolbar's color action (cone/disc, player/lineup markers).
+// A small fixed set rather than a full color wheel, per design.md's "simple color picker" allowance.
 export const OBJECT_COLOR_SWATCHES = [
   CONE_DEFAULT_COLOR,
   colors.primary,
@@ -36,6 +36,21 @@ export const OBJECT_COLOR_SWATCHES = [
   colors.warning,
   colors.canvasInk,
 ] as const
+
+// Picks readable label text for an arbitrary marker fill color — a light fill (or none, i.e. the
+// default white marker) keeps the usual dark ink text; a dark fill (e.g. the canvasInk or error
+// swatches) flips to white instead of going illegible against its own background. Perceived
+// brightness (ITU-R BT.601 weights), not a full WCAG contrast ratio — good enough for a fixed,
+// known swatch set, and the same logic dark mode's marker-on-dark-surface case will need later.
+export function getMarkerTextColor(fillColor: string | undefined): string {
+  if (!fillColor) return colors.canvasInk
+  const hex = fillColor.replace('#', '')
+  const r = parseInt(hex.substring(0, 2), 16)
+  const g = parseInt(hex.substring(2, 4), 16)
+  const b = parseInt(hex.substring(4, 6), 16)
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000
+  return brightness < 128 ? colors.textInverse : colors.canvasInk
+}
 
 // Default footprint for the two Shapes-tool objects, normalized like Zone/Goal's `width`
 // (fraction of canvas width; height fractions are of canvas height).
@@ -75,7 +90,7 @@ export const EQUIPMENT_ASSETS = {
   cone: {
     module: require('../../assets/icons/cone.svg') as number,
     thicken: false,
-    nativeWidth: 23,
+    nativeWidth: 17,
   },
   ladder: {
     module: require('../../assets/icons/ladder.svg') as number,
@@ -85,26 +100,37 @@ export const EQUIPMENT_ASSETS = {
   goal: {
     module: require('../../assets/icons/soccerGoal.svg') as number,
     thicken: false,
-    nativeWidth: 50,
+    nativeWidth: 75,
   },
   'mini-goal': {
     module: require('../../assets/icons/miniSoccerGoal.svg') as number,
     thicken: false,
-    nativeWidth: 31,
+    nativeWidth: 47,
   },
   'ball-bw': {
     module: require('../../assets/icons/BWsoccerBall.svg') as number,
     thicken: true,
-    nativeWidth: 23,
+    nativeWidth: 17,
   },
   'ball-color': {
     module: require('../../assets/icons/soccerBall.svg') as number,
     thicken: true,
-    nativeWidth: 23,
+    nativeWidth: 17,
   },
 } as const
 
 export type EquipmentAssetKey = keyof typeof EQUIPMENT_ASSETS
+
+// Plain-number mirror of the cone/ball nativeWidth values above, so getObjectFootprint (a
+// 'worklet' function called from the gesture's UI-thread worklet — see useCanvasGestures.ts)
+// never needs EQUIPMENT_ASSETS itself in its closure. EQUIPMENT_ASSETS carries require()'d SVG
+// module references alongside the plain numbers; keeping those out of a worklet closure entirely
+// is simple insurance against the asset loader ever doing something a worklet can't clone.
+const CONE_FOOTPRINT_WIDTH = EQUIPMENT_ASSETS.cone.nativeWidth
+const BALL_FOOTPRINT_WIDTH = {
+  bw: EQUIPMENT_ASSETS['ball-bw'].nativeWidth,
+  color: EQUIPMENT_ASSETS['ball-color'].nativeWidth,
+} as const
 
 function thickenStrokeWidths(svgText: string, multiplier: number): string {
   return svgText.replace(
@@ -229,11 +255,15 @@ export function getObjectFootprint(object: PlacedObject, canvasSize: CanvasSize)
     case 'label':
       return { width: canvas.equipment.size, height: canvas.equipment.size }
     case 'cone':
+      return { width: CONE_FOOTPRINT_WIDTH, height: CONE_FOOTPRINT_WIDTH }
+    case 'ball': {
+      const width = object.variant === 'color' ? BALL_FOOTPRINT_WIDTH.color : BALL_FOOTPRINT_WIDTH.bw
+      return { width, height: width }
+    }
     case 'disc':
     case 'pole':
     case 'ladder':
     case 'flag':
-    case 'ball':
       return { width: canvas.equipment.size, height: canvas.equipment.size }
   }
 }
@@ -266,7 +296,18 @@ export function isPointInObjectHit(
     return Math.abs(localX) <= halfW && Math.abs(localY) <= halfH
   }
 
-  const radius = object.type === 'circle-zone' ? object.radius * canvasSize.width * object.scale : HIT_RADIUS * object.scale
+  if (object.type === 'circle-zone') {
+    const radius = object.radius * canvasSize.width * object.scale
+    return Math.hypot(eventX - cx, eventY - cy) <= radius
+  }
+
+  // HIT_RADIUS alone comfortably covers small equipment (cone, ball) but goal/mini-goal render
+  // well past it (see EQUIPMENT_ASSETS nativeWidth) — floor the hit radius at HIT_RADIUS so small
+  // items keep their existing generous tap area, but grow it to match footprint for anything
+  // whose visual size actually exceeds that, so a wide goal is tappable/selectable/rotatable
+  // (rotation requires selecting it first) across its whole sprite, not just a small center dot.
+  const footprint = getObjectFootprint(object, canvasSize)
+  const radius = Math.max(HIT_RADIUS, footprint.width / 2, footprint.height / 2) * object.scale
   return Math.hypot(eventX - cx, eventY - cy) <= radius
 }
 

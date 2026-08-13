@@ -116,7 +116,7 @@ interface CanvasStoreState {
   reset: () => void
 }
 
-const initialSnapshot: CanvasSnapshot = { background: 'full-pitch', objects: [], arrows: [] }
+const initialSnapshot: CanvasSnapshot = { background: 'blank', objects: [], arrows: [] }
 
 export const useCanvasStore = create<CanvasStoreState>((set, get) => {
   // Every canvas-data mutation (place/move/rotate/scale/draw/duplicate/bring-to-front/delete/
@@ -237,7 +237,9 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
     setObjectColor: (id, color) => {
       commit({
         objects: get().objects.map((object) =>
-          object.id === id && (object.type === 'cone' || object.type === 'disc') ? { ...object, color } : object
+          object.id === id && (object.type === 'cone' || object.type === 'disc' || object.type === 'player')
+            ? { ...object, color }
+            : object
         ),
       })
     },

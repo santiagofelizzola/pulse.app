@@ -197,10 +197,14 @@ export default function CanvasScreen() {
     [deselectAll, background, objects, arrows, markSaved, navigation]
   )
 
-  // Cone and Disc are the only PlacedObject types carrying a `color` field — gate the toolbar's
-  // color action to them (see design.md §7's "Per-object color (cone & disc)").
+  // Cone, Disc, and PlayerMarker are the PlacedObject types carrying a `color` field — gate the
+  // toolbar's color action to them (see design.md §7's "Per-object color (cone & disc)",
+  // extended to player markers).
   const colorableSelected =
-    selected?.kind === 'object' && (selected.object.type === 'cone' || selected.object.type === 'disc') ? selected.object : null
+    selected?.kind === 'object' &&
+    (selected.object.type === 'cone' || selected.object.type === 'disc' || selected.object.type === 'player')
+      ? selected.object
+      : null
 
   const handleSelectColor = useCallback(
     (color: string) => {
