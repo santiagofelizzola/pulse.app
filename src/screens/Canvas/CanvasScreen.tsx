@@ -146,7 +146,7 @@ export default function CanvasScreen() {
     [selectBackground]
   )
 
-  const { pan, interaction, isInteracting } = useCanvasGestures({
+  const { pan, interaction, committed, isInteracting } = useCanvasGestures({
     objects,
     arrows,
     canvasSize,
@@ -282,9 +282,16 @@ export default function CanvasScreen() {
                         canvasSize={canvasSize}
                         isSelected={selected?.kind === 'arrow' && selected.arrow.id === item.arrow.id}
                         interaction={interaction}
+                        committed={committed}
                       />
                     ) : (
-                      <CanvasObject key={item.object.id} object={item.object} canvasSize={canvasSize} interaction={interaction} />
+                      <CanvasObject
+                        key={item.object.id}
+                        object={item.object}
+                        canvasSize={canvasSize}
+                        interaction={interaction}
+                        committed={committed}
+                      />
                     )
                   )}
                   {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
@@ -294,7 +301,13 @@ export default function CanvasScreen() {
                 </Canvas>
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   {playerObjects.map((object) => (
-                    <PlayerMarkerOverlay key={object.id} object={object} canvasSize={canvasSize} interaction={interaction} />
+                    <PlayerMarkerOverlay
+                      key={object.id}
+                      object={object}
+                      canvasSize={canvasSize}
+                      interaction={interaction}
+                      committed={committed}
+                    />
                   ))}
                 </View>
               </View>

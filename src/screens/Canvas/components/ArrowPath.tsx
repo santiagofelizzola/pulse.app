@@ -3,7 +3,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { canvas, colors } from '../../../theme/theme'
 import type { Arrow, ArrowType } from '../../../types'
-import type { InteractionState } from '../hooks/useCanvasGestures'
+import type { CommittedSnapshot, InteractionState } from '../hooks/useCanvasGestures'
 
 const STROKE_WIDTH = canvas.line.strokeWidth
 const DOUBLE_GAP = canvas.line.doubleGap
@@ -99,18 +99,31 @@ interface ArrowPathProps {
   canvasSize: { width: number; height: number }
   isSelected: boolean
   interaction: SharedValue<InteractionState>
+  committed: SharedValue<CommittedSnapshot>
 }
 
-export function ArrowPath({ arrow, canvasSize, isSelected, interaction }: ArrowPathProps) {
+export function ArrowPath({ arrow, canvasSize, isSelected, interaction, committed }: ArrowPathProps) {
   const endpoints = useDerivedValue(() => {
     const live = interaction.value
     const isTarget = live.mode === 'move' && live.targetId === arrow.id
-    const dx = isTarget ? live.dx : 0
-    const dy = isTarget ? live.dy : 0
-    const start = arrow.points[0]
-    const end = arrow.points[3]
-    const startPx = { x: start.x * canvasSize.width + dx, y: start.y * canvasSize.height + dy }
-    const endPx = { x: end.x * canvasSize.width + dx, y: end.y * canvasSize.height + dy }
+
+    // Committed endpoints come from the `committed` shared value rather than the captured
+    // `arrow` prop — see CanvasObject.tsx's identical comment, and CommittedSnapshot in
+    // useCanvasGestures.ts, for why a prop closure can't be trusted across the handoff.
+    const c = committed.value.arrows[arrow.id]
+    const baseStart = {
+      x: (c ? c.sx : arrow.points[0].x) * canvasSize.width,
+      y: (c ? c.sy : arrow.points[0].y) * canvasSize.height,
+    }
+    const baseEnd = {
+      x: (c ? c.ex : arrow.points[3].x) * canvasSize.width,
+      y: (c ? c.ey : arrow.points[3].y) * canvasSize.height,
+    }
+
+    // Both endpoints translate by the same live delta off their drag-start freeze, so the
+    // arrow keeps its length and angle through the drag.
+    const startPx = isTarget ? { x: live.startX + live.dx, y: live.startY + live.dy } : baseStart
+    const endPx = isTarget ? { x: live.startEndX + live.dx, y: live.startEndY + live.dy } : baseEnd
     return { start: startPx, end: endPx, shaftEnd: recedeEnd(startPx, endPx, HEAD_LENGTH) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrow.points, canvasSize.width, canvasSize.height])

@@ -5,12 +5,13 @@ import { canvas, colors } from '../../../theme/theme'
 import { CONE_DEFAULT_COLOR, EQUIPMENT_ASSETS, useEquipmentSvg, type EquipmentAssetKey } from '../../../utils/canvasUtils'
 import type { ShapeToolType } from '../../../store/canvasStore'
 import type { PlacedObject } from '../../../types'
-import type { InteractionState } from '../hooks/useCanvasGestures'
+import type { CommittedSnapshot, InteractionState } from '../hooks/useCanvasGestures'
 
 interface CanvasObjectProps {
   object: Exclude<PlacedObject, { type: 'player' }>
   canvasSize: { width: number; height: number }
   interaction: SharedValue<InteractionState>
+  committed: SharedValue<CommittedSnapshot>
 }
 
 const EQUIPMENT_SIZE = canvas.equipment.size
@@ -85,16 +86,21 @@ function ZoneShape({
   object,
   canvasSize,
   interaction,
+  committed,
 }: {
   object: Extract<PlacedObject, { type: 'zone' }>
   canvasSize: { width: number; height: number }
   interaction: SharedValue<InteractionState>
+  committed: SharedValue<CommittedSnapshot>
 }) {
   const rect = useDerivedValue(() => {
     const live = interaction.value
     const isResizing = live.targetId === object.id && live.mode === 'resize'
-    const width = isResizing ? live.resizeWidth : object.width * canvasSize.width
-    const height = isResizing ? live.resizeHeight : object.height * canvasSize.height
+    // Committed width/height read from the snapshot for the same reason as the transform above
+    // — a resize commit hands off across the same reconciler boundary a move does.
+    const c = committed.value.objects[object.id]
+    const width = isResizing ? live.resizeWidth : (c ? c.width : object.width) * canvasSize.width
+    const height = isResizing ? live.resizeHeight : (c ? c.height : object.height) * canvasSize.height
     return Skia.XYWHRect(-width / 2, -height / 2, width, height)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [object.id, object.width, object.height, canvasSize.width, canvasSize.height])
@@ -115,17 +121,28 @@ function CircleZoneShape({
   return <Circle cx={0} cy={0} r={r} color={colors.canvasInk} style="stroke" strokeWidth={1} />
 }
 
-export function CanvasObject({ object, canvasSize, interaction }: CanvasObjectProps) {
+export function CanvasObject({ object, canvasSize, interaction, committed }: CanvasObjectProps) {
   const transform = useDerivedValue(() => {
-    const baseX = object.x * canvasSize.width
-    const baseY = object.y * canvasSize.height
+    // Base geometry comes from the `committed` shared value, NOT this worklet's captured
+    // `object` prop. That prop arrives on Skia's own reconciler schedule, which this app's
+    // React tree can't order against — reading it here is what let a cleared interaction pair
+    // with a stale pre-drag position (see CommittedSnapshot in useCanvasGestures.ts). The prop
+    // remains as the first-mount fallback, before the snapshot's first write lands.
+    const c = committed.value.objects[object.id]
+    const baseX = (c ? c.x : object.x) * canvasSize.width
+    const baseY = (c ? c.y : object.y) * canvasSize.height
+    const baseRotation = c ? c.rotation : object.rotation
+    const baseScale = c ? c.scale : object.scale
+
     const live = interaction.value
     const isTarget = live.targetId === object.id
 
-    const x = isTarget && live.mode === 'move' ? baseX + live.dx : baseX
-    const y = isTarget && live.mode === 'move' ? baseY + live.dy : baseY
-    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : object.rotation
-    const scale = isTarget && live.mode === 'scale' ? live.scale : object.scale
+    // While dragging, position is the drag-start point frozen in `interaction` plus the live
+    // delta — both from the same struct, so an in-flight drag never reads committed state.
+    const x = isTarget && live.mode === 'move' ? live.startX + live.dx : baseX
+    const y = isTarget && live.mode === 'move' ? live.startY + live.dy : baseY
+    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : baseRotation
+    const scale = isTarget && live.mode === 'scale' ? live.scale : baseScale
 
     return [{ translateX: x }, { translateY: y }, { rotate: rotation }, { scale }]
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +200,7 @@ export function CanvasObject({ object, canvasSize, interaction }: CanvasObjectPr
     case 'zone':
       return (
         <Group transform={transform}>
-          <ZoneShape object={object} canvasSize={canvasSize} interaction={interaction} />
+          <ZoneShape object={object} canvasSize={canvasSize} interaction={interaction} committed={committed} />
         </Group>
       )
     case 'circle-zone':

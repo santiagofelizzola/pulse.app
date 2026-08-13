@@ -4,27 +4,36 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 import { canvas, colors, fonts, radius, typography } from '../../../theme/theme'
 import { getMarkerTextColor } from '../../../utils/canvasUtils'
 import type { PlayerMarker } from '../../../types'
-import type { InteractionState } from '../hooks/useCanvasGestures'
+import type { CommittedSnapshot, InteractionState } from '../hooks/useCanvasGestures'
 
 interface PlayerMarkerOverlayProps {
   object: PlayerMarker
   canvasSize: { width: number; height: number }
   interaction: SharedValue<InteractionState>
+  committed: SharedValue<CommittedSnapshot>
 }
 
 const DIAMETER = canvas.marker.diameter
 
-export function PlayerMarkerOverlay({ object, canvasSize, interaction }: PlayerMarkerOverlayProps) {
+export function PlayerMarkerOverlay({ object, canvasSize, interaction, committed }: PlayerMarkerOverlayProps) {
   const style = useAnimatedStyle(() => {
-    const baseX = object.x * canvasSize.width
-    const baseY = object.y * canvasSize.height
+    // Markers never showed the reconciler race — they render in the app's own React tree, where
+    // this effect is ordered child-before-parent within a single commit — but they read the
+    // same snapshot as CanvasObject/ArrowPath so all three position paths stay identical and
+    // none can drift apart later. See CommittedSnapshot in useCanvasGestures.ts.
+    const c = committed.value.objects[object.id]
+    const baseX = (c ? c.x : object.x) * canvasSize.width
+    const baseY = (c ? c.y : object.y) * canvasSize.height
+    const baseRotation = c ? c.rotation : object.rotation
+    const baseScale = c ? c.scale : object.scale
+
     const live = interaction.value
     const isTarget = live.targetId === object.id
 
-    const x = isTarget && live.mode === 'move' ? baseX + live.dx : baseX
-    const y = isTarget && live.mode === 'move' ? baseY + live.dy : baseY
-    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : object.rotation
-    const scale = isTarget && live.mode === 'scale' ? live.scale : object.scale
+    const x = isTarget && live.mode === 'move' ? live.startX + live.dx : baseX
+    const y = isTarget && live.mode === 'move' ? live.startY + live.dy : baseY
+    const rotation = isTarget && live.mode === 'rotate' ? live.rotation : baseRotation
+    const scale = isTarget && live.mode === 'scale' ? live.scale : baseScale
 
     return {
       left: x - DIAMETER / 2,

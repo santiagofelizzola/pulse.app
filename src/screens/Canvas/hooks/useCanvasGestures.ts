@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Gesture } from 'react-native-gesture-handler'
-import { runOnJS, useSharedValue } from 'react-native-reanimated'
+import { runOnJS, runOnUI, useSharedValue } from 'react-native-reanimated'
 
 import { canvas } from '../../../theme/theme'
 import {
@@ -35,12 +35,94 @@ export interface InteractionState {
   placeShapeType: ShapeToolType | null
   drawStart: { x: number; y: number }
   drawCurrent: { x: number; y: number }
+  // Pixel-space position captured once at the start of a 'move' drag (the object's own point,
+  // or an arrow's start point) — see CanvasObject/ArrowPath/PlayerMarkerOverlay, which add
+  // dx/dy onto THIS instead of onto the live `object.x`/`arrow.points` prop. Both startX/Y and
+  // dx/dy live in this same frozen struct and clear together, so a render can never combine a
+  // just-committed (already-final) prop position with a still-live delta and double-count it —
+  // which is what produced the post-drop overshoot-then-snap-back flicker on equipment/zones/
+  // arrows (markers happened not to show it, but shared the identical race).
+  startX: number
+  startY: number
+  // Arrow-only: the arrow's end point, frozen the same way as startX/startY's start point —
+  // an arrow drag needs to hold both endpoints steady, not just one.
+  startEndX: number
+  startEndY: number
   // Bumped every onBegin. A commit (move/rotate/scale/resize) freezes `interaction` at its
   // final value instead of resetting to idle in onEnd — the reset waits for the committed
   // objects/arrows props to actually land (see the useEffect below) so the render never has a
   // frame where it falls back to the pre-drag prop position. `seq` lets that effect confirm
   // it's still clearing the gesture it was waiting for, not a newer one that started since.
   seq: number
+}
+
+// The committed (post-store) geometry of every object/arrow, mirrored into a shared value.
+//
+// This exists because CanvasObject/ArrowPath are NOT rendered by this React tree — Skia's
+// <Canvas> renders its children through a separate reconciler (sksg/Reconciler.ts), started
+// fire-and-forget from a useLayoutEffect and awaited across a microtask inside
+// SkiaSGRoot.render. Their useDerivedValue mappers therefore pick up new committed props on a
+// schedule this tree cannot order against. Reading the base position from a React prop closure
+// meant the base and the live drag delta lived on two different clocks: clear `interaction`
+// before the Skia subtree re-commits and the transform falls through to a still-PRE-DRAG
+// closure, painting the object back at the drag origin for a few frames.
+//
+// Mirroring committed geometry here lets the snapshot and the interaction-clear be written in
+// ONE runOnUI block (see the effect below), so base and delta update atomically on the UI
+// thread and no reconciler ordering can wedge between them. Player markers never showed the bug
+// — they live in this tree, where useAnimatedStyle's effect is ordered child-before-parent in
+// the same commit — but they read the snapshot too so all three paths stay identical.
+export interface CommittedObject {
+  x: number
+  y: number
+  rotation: number
+  scale: number
+  // Zone (rectangle) only — the one shape resized in width/height rather than via `scale`.
+  // Left at 0 for every other type, which never reads these.
+  width: number
+  height: number
+}
+
+export interface CommittedArrow {
+  sx: number
+  sy: number
+  ex: number
+  ey: number
+}
+
+export interface CommittedSnapshot {
+  objects: Record<string, CommittedObject>
+  arrows: Record<string, CommittedArrow>
+}
+
+const EMPTY_SNAPSHOT: CommittedSnapshot = { objects: {}, arrows: {} }
+
+// Normalized (0..1) coordinates, same units as the store — consumers multiply by canvasSize
+// from their own closure, which is stable for a gesture's duration and never races a commit.
+function buildSnapshot(objects: PlacedObject[], arrows: Arrow[]): CommittedSnapshot {
+  const objectMap: Record<string, CommittedObject> = {}
+  for (const object of objects) {
+    objectMap[object.id] = {
+      x: object.x,
+      y: object.y,
+      rotation: object.rotation,
+      scale: object.scale,
+      width: object.type === 'zone' ? object.width : 0,
+      height: object.type === 'zone' ? object.height : 0,
+    }
+  }
+
+  const arrowMap: Record<string, CommittedArrow> = {}
+  for (const arrow of arrows) {
+    arrowMap[arrow.id] = {
+      sx: arrow.points[0].x,
+      sy: arrow.points[0].y,
+      ex: arrow.points[3].x,
+      ey: arrow.points[3].y,
+    }
+  }
+
+  return { objects: objectMap, arrows: arrowMap }
 }
 
 const IDLE_STATE: InteractionState = {
@@ -57,6 +139,10 @@ const IDLE_STATE: InteractionState = {
   placeShapeType: null,
   drawStart: { x: 0, y: 0 },
   drawCurrent: { x: 0, y: 0 },
+  startX: 0,
+  startY: 0,
+  startEndX: 0,
+  startEndY: 0,
   seq: 0,
 }
 
@@ -103,6 +189,7 @@ export function useCanvasGestures({
   onMoveArrow,
 }: UseCanvasGesturesArgs) {
   const interaction = useSharedValue<InteractionState>(IDLE_STATE)
+  const committed = useSharedValue<CommittedSnapshot>(EMPTY_SNAPSHOT)
   const startObjectPoint = useSharedValue({ x: 0, y: 0 })
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const targetScaleRef = useSharedValue(1)
@@ -145,15 +232,29 @@ export function useCanvasGestures({
     onResizeObject(id, width, height)
   }
 
-  // Fires once `objects`/`arrows` actually reflect the pending commit (i.e. after the store
-  // update has propagated back through React), so the live-drag transform can hand off to the
-  // committed-prop transform with no frame in between showing the pre-drag position.
+  // Mirrors every store change into `committed`, and — when that change is the one a just-ended
+  // gesture was waiting on — clears `interaction` in the SAME UI-thread block. Writing both
+  // together is the whole point: the live-drag transform hands off to the committed transform
+  // as one atomic step, so there is no window where a render can pair an already-final base
+  // with a still-live delta, or (the actual bug — see CommittedSnapshot above) a cleared
+  // interaction with a stale pre-drag base from Skia's independently-scheduled reconciler.
   useEffect(() => {
-    if (pendingClearSeq.current !== null && interaction.value.seq === pendingClearSeq.current) {
-      interaction.value = IDLE_STATE
-      pendingClearSeq.current = null
-      setIsInteracting(false)
-    }
+    const snapshot = buildSnapshot(objects, arrows)
+    const clearSeq = pendingClearSeq.current
+    pendingClearSeq.current = null
+
+    runOnUI((nextSnapshot: CommittedSnapshot, seq: number | null) => {
+      'worklet'
+      committed.value = nextSnapshot
+      // Re-checked here rather than on the JS thread because `interaction` is authoritative on
+      // the UI thread: a newer gesture may already have begun, and its state must not be
+      // stomped by an older commit's clear.
+      if (seq !== null && interaction.value.seq === seq) {
+        interaction.value = IDLE_STATE
+      }
+    })(snapshot, clearSeq)
+
+    if (clearSeq !== null && interaction.value.seq === clearSeq) setIsInteracting(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objects, arrows])
 
@@ -221,7 +322,7 @@ export function useCanvasGestures({
         const py = object.y * canvasSize.height
         if (Math.hypot(event.x - px, event.y - py) <= HIT_RADIUS * object.scale) {
           startObjectPoint.value = { x: px, y: py }
-          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object' }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object', startX: px, startY: py }
           runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
@@ -242,7 +343,7 @@ export function useCanvasGestures({
           const px = object.x * canvasSize.width
           const py = object.y * canvasSize.height
           startObjectPoint.value = { x: px, y: py }
-          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object' }
+          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object', startX: px, startY: py }
           runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
@@ -256,7 +357,17 @@ export function useCanvasGestures({
           y: point.y * canvasSize.height,
         }))
         if (distanceToCubicBezier({ x: event.x, y: event.y }, p0, p1, p2, p3) <= canvas.line.hitInflate) {
-          interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: arrow.id, targetKind: 'arrow' }
+          interaction.value = {
+            ...IDLE_STATE,
+            seq,
+            mode: 'move',
+            targetId: arrow.id,
+            targetKind: 'arrow',
+            startX: p0.x,
+            startY: p0.y,
+            startEndX: p3.x,
+            startEndY: p3.y,
+          }
           runOnJS(onSelect)(arrow.id)
           runOnJS(beginInteracting)()
           return
@@ -403,5 +514,5 @@ export function useCanvasGestures({
       }
     })
 
-  return { pan, interaction, isInteracting }
+  return { pan, interaction, committed, isInteracting }
 }
