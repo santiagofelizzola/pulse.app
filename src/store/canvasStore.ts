@@ -205,9 +205,10 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
             }
 
       commit({ objects: [...state.objects, object] })
-      // Auto-select + disarm, same rationale as addArrow — the shape just placed is the likely
-      // next thing the coach adjusts (resize/move), not the start of another one.
-      set({ selectedId: object.id, tool: SELECT_TOOL })
+      // Disarm back to select mode (the shape just placed is the likely next thing the coach
+      // adjusts, not the start of another one) but don't auto-select it — selection is only
+      // ever a deliberate tap, same rule as placeObject not selecting the object it just placed.
+      set({ selectedId: null, tool: SELECT_TOOL })
     },
 
     moveObject: (id, x, y) => {
@@ -248,11 +249,12 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       const state = get()
       const arrow: Arrow = { id: randomUUID(), type, points, zIndex: nextZIndex(state) }
       commit({ arrows: [...state.arrows, arrow] })
-      // Auto-disarm back to select mode so the very next touch moves/selects the arrow just
-      // drawn, rather than reading as the start of another one — drawing-then-immediately-
+      // Auto-disarm back to select mode so the very next touch can tap-select/move the arrow
+      // just drawn, rather than reading as the start of another one — drawing-then-immediately-
       // adjusting is the common case, unlike equipment tools where re-placing several of the
-      // same item in a row is common and staying armed is the right default.
-      set({ selectedId: arrow.id, tool: SELECT_TOOL })
+      // same item in a row is common and staying armed is the right default. But don't
+      // auto-select it: selection is only ever a deliberate tap, same rule as placeObject.
+      set({ selectedId: null, tool: SELECT_TOOL })
     },
 
     moveArrow: (id, dx, dy) => {

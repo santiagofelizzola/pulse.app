@@ -191,6 +191,10 @@ export function useCanvasGestures({
   const interaction = useSharedValue<InteractionState>(IDLE_STATE)
   const committed = useSharedValue<CommittedSnapshot>(EMPTY_SNAPSHOT)
   const startObjectPoint = useSharedValue({ x: 0, y: 0 })
+  // Raw touch-down point (screen px, same frame as onBegin's event.x/y), captured every
+  // onBegin regardless of what gets hit. onTouchesUp uses it to measure tap-vs-drag travel
+  // independent of the Pan recognizer's own activation state — see onTouchesUp below for why.
+  const touchDownPoint = useSharedValue({ x: 0, y: 0 })
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const targetScaleRef = useSharedValue(1)
   const interactionSeq = useSharedValue(0)
@@ -262,6 +266,8 @@ export function useCanvasGestures({
     .maxPointers(1)
     .minDistance(0)
     .onBegin((event) => {
+      touchDownPoint.value = { x: event.x, y: event.y }
+
       // Every gesture lifecycle gets its own seq so a commit's deferred interaction-clear (see
       // the useEffect above) can tell "the commit I'm waiting on landed" apart from "a new
       // gesture already started since."
@@ -322,8 +328,10 @@ export function useCanvasGestures({
         const py = object.y * canvasSize.height
         if (Math.hypot(event.x - px, event.y - py) <= HIT_RADIUS * object.scale) {
           startObjectPoint.value = { x: px, y: py }
+          // Selection is decided in onEnd (tap vs. drag, by travel distance) — not here. Firing
+          // onSelect eagerly on touch-down is what used to auto-select on every drag, putting
+          // rotate/scale handles under the very next touch-down before the user asked for them.
           interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object', startX: px, startY: py }
-          runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
         }
@@ -343,8 +351,8 @@ export function useCanvasGestures({
           const px = object.x * canvasSize.width
           const py = object.y * canvasSize.height
           startObjectPoint.value = { x: px, y: py }
+          // See the player-marker branch above: selection is decided in onEnd, not on touch-down.
           interaction.value = { ...IDLE_STATE, seq, mode: 'move', targetId: object.id, targetKind: 'object', startX: px, startY: py }
-          runOnJS(onSelect)(object.id)
           runOnJS(beginInteracting)()
           return
         }
@@ -368,7 +376,7 @@ export function useCanvasGestures({
             startEndX: p3.x,
             startEndY: p3.y,
           }
-          runOnJS(onSelect)(arrow.id)
+          // See the object branches above: selection is decided in onEnd, not on touch-down.
           runOnJS(beginInteracting)()
           return
         }
@@ -445,6 +453,26 @@ export function useCanvasGestures({
         interaction.value = { ...current, drawCurrent: { x: event.x, y: event.y } }
       }
     })
+    .onTouchesUp((event) => {
+      // A Pan gesture only calls onEnd once the recognizer has transitioned to ACTIVE, which a
+      // truly stationary touch (zero movement) may never reach — so onEnd can silently never
+      // fire for a clean tap (same root cause as the tap-to-place fix in onBegin's 'place'
+      // branch: onEnd can't be trusted for a near-instantaneous, low-travel touch). onTouchesUp
+      // is the raw touch-lift event and fires regardless of recognizer activation, so tap
+      // selection is decided here instead of onEnd. Gated the same way onEnd gates its drag
+      // commits (TAP_SLOP) so a real drag — which reliably does activate and reaches onEnd —
+      // is left untouched and still never selects.
+      const current = interaction.value
+      if (current.mode !== 'move' || !current.targetId) return
+      const touch = event.changedTouches[0]
+      if (!touch) return
+      const travel = Math.hypot(touch.x - touchDownPoint.value.x, touch.y - touchDownPoint.value.y)
+      if (travel < TAP_SLOP) {
+        interaction.value = IDLE_STATE
+        runOnJS(onSelect)(current.targetId)
+        runOnJS(endInteracting)()
+      }
+    })
     .onEnd((event) => {
       const current = interaction.value
       const travel = Math.hypot(event.translationX, event.translationY)
@@ -456,8 +484,10 @@ export function useCanvasGestures({
       // position that this whole seq/effect mechanism exists to avoid.
       let deferClear = false
 
-      // A near-zero-travel "move" is really just the selection tap from onBegin — skip the
-      // commit so tapping an object to select it doesn't push a no-op entry onto undo history.
+      // A near-zero-travel "move" is really just the selection tap already handled by
+      // onTouchesUp above (which will have reset `interaction` to idle by the time we get here)
+      // — this branch only ever runs for a real drag, gated the same way (TAP_SLOP) so it never
+      // double-fires against onTouchesUp's tap case.
       if (current.mode === 'move' && current.targetId && travel >= TAP_SLOP) {
         if (current.targetKind === 'object' && canvasSize.width > 0 && canvasSize.height > 0) {
           const finalX = (startObjectPoint.value.x + event.translationX) / canvasSize.width
