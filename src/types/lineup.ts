@@ -1,4 +1,4 @@
-import type { CanvasBackground } from './canvas'
+import type { CanvasBackground, PitchStyle } from './canvas'
 
 export type SquadSize = 7 | 9 | 11
 
@@ -45,6 +45,9 @@ export interface Lineup {
   // flagged isKeeper. Both optional; unset renders the original default white marker.
   teamColor?: string
   keeperColor?: string
+  // Pitch surface preset, per lineup and independent of any app-level theme. Unset renders the
+  // original white pitch with dark markings.
+  pitchStyle?: PitchStyle
   createdAt: string
   updatedAt: string
 }
@@ -60,4 +63,5 @@ export interface CreateLineupInput {
   notes?: string
   teamColor?: string
   keeperColor?: string
+  pitchStyle?: PitchStyle
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
+import { DEFAULT_PITCH_STYLE, isPitchStyle } from '../../utils/pitchStyles'
 import type {
   Lineup,
   CreateLineupInput,
@@ -23,6 +24,7 @@ interface LineupRow {
   notes: string | null
   team_color: string | null
   keeper_color: string | null
+  pitch_style: string | null
   created_at: string
   updated_at: string
 }
@@ -41,6 +43,9 @@ function toLineup(row: LineupRow): Lineup {
     notes: row.notes ?? undefined,
     teamColor: row.team_color ?? undefined,
     keeperColor: row.keeper_color ?? undefined,
+    // Guarded rather than cast: an unrecognized stored value falls back to the default preset
+    // instead of handing the renderer a style it can't resolve.
+    pitchStyle: isPitchStyle(row.pitch_style) ? row.pitch_style : DEFAULT_PITCH_STYLE,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -74,13 +79,14 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     notes: input.notes,
     teamColor: input.teamColor,
     keeperColor: input.keeperColor,
+    pitchStyle: input.pitchStyle ?? DEFAULT_PITCH_STYLE,
     createdAt: now,
     updatedAt: now,
   }
 
   db.runSync(
-    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, team_color, keeper_color, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, team_color, keeper_color, pitch_style, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     lineup.id,
     lineup.name,
     lineup.matchDate ?? null,
@@ -93,6 +99,7 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     lineup.notes ?? null,
     lineup.teamColor ?? null,
     lineup.keeperColor ?? null,
+    lineup.pitchStyle ?? DEFAULT_PITCH_STYLE,
     lineup.createdAt,
     lineup.updatedAt
   )
@@ -113,7 +120,7 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
 
   db.runSync(
     `UPDATE lineups
-     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, team_color = ?, keeper_color = ?, updated_at = ?
+     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, team_color = ?, keeper_color = ?, pitch_style = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.matchDate ?? null,
@@ -125,6 +132,7 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
     updated.notes ?? null,
     updated.teamColor ?? null,
     updated.keeperColor ?? null,
+    updated.pitchStyle ?? DEFAULT_PITCH_STYLE,
     updated.updatedAt,
     id
   )

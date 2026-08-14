@@ -14,6 +14,9 @@ interface LineupMarkerProps {
   // Resolved by the screen from teamColor/keeperColor + position.isKeeper — undefined renders
   // the original default white marker.
   color?: string
+  // Name-caption color, supplied by the lineup's pitch style — a dark caption is unreadable on a
+  // dark pitch surface. Defaults to the original dark text for the white pitch.
+  captionColor?: string
   onMove: (id: string, x: number, y: number) => void
   onPress: (id: string) => void
 }
@@ -37,7 +40,15 @@ function clamp01(value: number): number {
 // Pan's travel distance in onEnd — the latter is fragile because a Pan's onEnd/onUpdate aren't
 // reliably called at all for a near-zero-movement touch (see useCanvasGestures.ts's onEnd
 // comment for the same failure mode on the drawing canvas).
-export function LineupMarker({ position, canvasSize, showRole, color, onMove, onPress }: LineupMarkerProps) {
+export function LineupMarker({
+  position,
+  canvasSize,
+  showRole,
+  color,
+  captionColor,
+  onMove,
+  onPress,
+}: LineupMarkerProps) {
   const translateX = useSharedValue(0)
   const translateY = useSharedValue(0)
   const baseX = position.x * canvasSize.width
@@ -105,7 +116,7 @@ export function LineupMarker({ position, canvasSize, showRole, color, onMove, on
             {showRole ? position.role ?? '' : ''}
           </Text>
         </Animated.View>
-        <Text style={styles.label} numberOfLines={1}>
+        <Text style={[styles.label, { color: captionColor ?? colors.textPrimary }]} numberOfLines={1}>
           {position.label}
         </Text>
       </Animated.View>
@@ -135,7 +146,6 @@ const styles = StyleSheet.create({
   label: {
     ...typography.caption,
     fontFamily: fonts.semibold,
-    color: colors.textPrimary,
     marginTop: spacing.xxs,
     textAlign: 'center',
   },

@@ -95,6 +95,17 @@ export const canvas = {
   marker: { diameter: 30, border: 2 },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
+  // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the
+  // PitchStyleValue objects PitchBackground renders from — components never name a pitch color.
+  pitch: {
+    white: '#FFFFFF',
+    ink: '#16181A',
+    turfDark: '#357007',
+    turfLight: '#4F980C',
+    // Mowing bands drawn across the pitch height. Odd, so the top and bottom bands share a shade
+    // (symmetric) and one band sits centered on the halfway line.
+    bandCount: 11,
+  },
   // width:height for a portrait pitch (a real pitch is ~105x68 length:width; rotated to
   // portrait that's width:height = 68:105). The canvas is fit to this ratio, not full-bleed,
   // so pitch markings stay proportionally correct instead of stretching to fill the screen.

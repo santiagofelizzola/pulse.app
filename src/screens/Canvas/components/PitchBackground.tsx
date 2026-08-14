@@ -1,14 +1,19 @@
 import { useMemo } from 'react'
 import { Path, Rect, Skia, type SkPath } from '@shopify/react-native-skia'
 
-import { canvas, colors } from '../../../theme/theme'
+import { canvas } from '../../../theme/theme'
 import type { CanvasBackground } from '../../../types'
+import { PITCH_STYLES, type PitchStyleValue } from '../../../utils/pitchStyles'
 
 interface PitchBackgroundProps {
   background: CanvasBackground
   width: number
   height: number
   margin?: number
+  // The pitch SURFACE (bands + marking color). Geometry comes from `background`; this only
+  // decides what the surface and lines are painted with. Defaults to the white pitch, so callers
+  // that don't care render exactly as before.
+  style?: PitchStyleValue
 }
 
 // Proportional pitch-marking geometry (fractions of the drawable play area),
@@ -183,18 +188,61 @@ function buildPitchPath(background: CanvasBackground, width: number, height: num
   return path
 }
 
-export function PitchBackground({ background, width, height, margin = DEFAULT_MARGIN }: PitchBackgroundProps) {
+// Half-pixel bleed on each overlay band. Bands land on fractional y offsets (height rarely divides
+// evenly), and antialiasing along a shared fractional edge leaks a hairline of the base color;
+// overlapping the neighbouring rows by a sub-pixel hides it.
+const BAND_BLEED = 0.5
+
+interface Band {
+  y: number
+  height: number
+  color: string
+}
+
+// Every band above the base fill, top to bottom. The base fill (bands[0]) is drawn full-bleed
+// underneath, so the rows that would repeat it are skipped rather than painted over it.
+function buildBands(height: number, style: PitchStyleValue): Band[] {
+  if (!style.striped || style.bands.length < 2) return []
+
+  const count = Math.max(Math.round(style.bandCount ?? canvas.pitch.bandCount), 1)
+  const bands: Band[] = []
+
+  for (let i = 1; i < count; i += 1) {
+    const colorIndex = i % style.bands.length
+    if (colorIndex === 0) continue // already covered by the base fill
+    const top = (i * height) / count
+    const bottom = ((i + 1) * height) / count
+    const y = Math.max(top - BAND_BLEED, 0)
+    bands.push({ y, height: Math.min(bottom + BAND_BLEED, height) - y, color: style.bands[colorIndex] })
+  }
+
+  return bands
+}
+
+export function PitchBackground({
+  background,
+  width,
+  height,
+  margin = DEFAULT_MARGIN,
+  style = PITCH_STYLES.white,
+}: PitchBackgroundProps) {
   const path = useMemo(() => buildPitchPath(background, width, height, margin), [background, width, height, margin])
+  // Bands run the full frame, not just the play area inside `margin` — real mowing carries on
+  // past the touchline.
+  const bands = useMemo(() => buildBands(height, style), [height, style])
 
   if (width === 0 || height === 0) return null
 
   return (
     <>
-      <Rect x={0} y={0} width={width} height={height} color={colors.background} />
+      <Rect x={0} y={0} width={width} height={height} color={style.bands[0]} />
+      {bands.map((band) => (
+        <Rect key={band.y} x={0} y={band.y} width={width} height={band.height} color={band.color} />
+      ))}
       {path ? (
         <Path
           path={path}
-          color={colors.canvasInk}
+          color={style.lineColor}
           style="stroke"
           strokeWidth={canvas.pitchLine.width}
           strokeCap="round"

@@ -2,6 +2,11 @@ export type CanvasBackground =
   | 'full-pitch' | 'half-pitch' | 'final-third'
   | 'middle-third' | 'penalty-box' | 'blank'
 
+// The pitch SURFACE treatment, orthogonal to CanvasBackground (which picks the crop and the
+// markings drawn on it). Each value maps to a PitchStyleValue in utils/pitchStyles.ts — adding a
+// preset is a new entry there plus a member here, never new rendering code.
+export type PitchStyle = 'white' | 'green-striped'
+
 export type ArrowType = 'pass' | 'shot' | 'run' | 'dribble'
 
 export interface BaseCanvasObject {

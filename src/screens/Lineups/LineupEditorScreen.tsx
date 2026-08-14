@@ -11,9 +11,10 @@ import { lineupRepository } from '../../db/repositories/lineupRepository'
 import type { RootStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { getFormationSlots, isKeeperPosition } from '../../utils/formationSlots'
-import type { CreateLineupInput, Formation, LineupPosition, SquadSize, SubEntry } from '../../types'
+import { DEFAULT_PITCH_STYLE, PITCH_STYLES } from '../../utils/pitchStyles'
+import type { CreateLineupInput, Formation, LineupPosition, PitchStyle, SquadSize, SubEntry } from '../../types'
 import { FormationPicker } from './components/FormationPicker'
-import { LineupColorSheet } from './components/LineupColorSheet'
+import { LineupAppearanceSheet } from './components/LineupAppearanceSheet'
 import { LineupMarker } from './components/LineupMarker'
 import { LineupSaveSheet } from './components/LineupSaveSheet'
 import { PositionEditSheet } from './components/PositionEditSheet'
@@ -41,9 +42,10 @@ export default function LineupEditorScreen() {
   const [subs, setSubs] = useState<SubEntry[]>([])
   const [teamColor, setTeamColor] = useState<string | undefined>(undefined)
   const [keeperColor, setKeeperColor] = useState<string | undefined>(undefined)
+  const [pitchStyle, setPitchStyle] = useState<PitchStyle>(DEFAULT_PITCH_STYLE)
 
   const [formationPickerOpen, setFormationPickerOpen] = useState(false)
-  const [colorSheetOpen, setColorSheetOpen] = useState(false)
+  const [appearanceSheetOpen, setAppearanceSheetOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<LineupPosition | null>(null)
   const [subSheetOpen, setSubSheetOpen] = useState(false)
   const [editingSub, setEditingSub] = useState<SubEntry | null>(null)
@@ -69,6 +71,7 @@ export default function LineupEditorScreen() {
       setSubs(loaded.subs ?? [])
       setTeamColor(loaded.teamColor)
       setKeeperColor(loaded.keeperColor)
+      setPitchStyle(loaded.pitchStyle ?? DEFAULT_PITCH_STYLE)
       setPhase('pitch')
     })
   }, [lineupId])
@@ -167,6 +170,11 @@ export default function LineupEditorScreen() {
     dirtyRef.current = true
   }, [])
 
+  const handleSelectPitchStyle = useCallback((next: PitchStyle) => {
+    setPitchStyle(next)
+    dirtyRef.current = true
+  }, [])
+
   const handleAddSubPress = useCallback(() => {
     setEditingSub(null)
     setSubSheetOpen(true)
@@ -210,6 +218,7 @@ export default function LineupEditorScreen() {
           subs,
           teamColor,
           keeperColor,
+          pitchStyle,
         }
         if (lineupId) {
           await lineupRepository.update(lineupId, input)
@@ -225,7 +234,7 @@ export default function LineupEditorScreen() {
         setSaving(false)
       }
     },
-    [squadSize, formation, positions, showRoleLabels, subs, teamColor, keeperColor, lineupId, navigation]
+    [squadSize, formation, positions, showRoleLabels, subs, teamColor, keeperColor, pitchStyle, lineupId, navigation]
   )
 
   const isPitchEmpty = positions.length === 0
@@ -257,7 +266,7 @@ export default function LineupEditorScreen() {
                   <EyeOff size={22} color={colors.textPrimary} />
                 )}
               </Pressable>
-              <Pressable onPress={() => setColorSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+              <Pressable onPress={() => setAppearanceSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
                 <Palette size={22} color={colors.textPrimary} />
               </Pressable>
               <Pressable
@@ -281,7 +290,12 @@ export default function LineupEditorScreen() {
             <View style={{ width: canvasWidth, height: canvasHeight }}>
               <View style={[styles.canvasBox, StyleSheet.absoluteFill]}>
                 <Canvas style={StyleSheet.absoluteFill}>
-                  <PitchBackground background="full-pitch" width={canvasWidth} height={canvasHeight} />
+                  <PitchBackground
+                    background="full-pitch"
+                    width={canvasWidth}
+                    height={canvasHeight}
+                    style={PITCH_STYLES[pitchStyle]}
+                  />
                 </Canvas>
                 <View style={StyleSheet.absoluteFill}>
                   {positions.map((position) => (
@@ -291,6 +305,7 @@ export default function LineupEditorScreen() {
                       canvasSize={canvasSize}
                       showRole={showRoleLabels}
                       color={isKeeperPosition(position) ? keeperColor : teamColor}
+                      captionColor={PITCH_STYLES[pitchStyle].captionColor}
                       onMove={handleMove}
                       onPress={handleMarkerPress}
                     />
@@ -338,13 +353,15 @@ export default function LineupEditorScreen() {
         onSave={handleSavePosition}
       />
 
-      <LineupColorSheet
-        visible={colorSheetOpen}
+      <LineupAppearanceSheet
+        visible={appearanceSheetOpen}
+        pitchStyle={pitchStyle}
         teamColor={teamColor}
         keeperColor={keeperColor}
+        onSelectPitchStyle={handleSelectPitchStyle}
         onSelectTeamColor={handleSelectTeamColor}
         onSelectKeeperColor={handleSelectKeeperColor}
-        onClose={() => setColorSheetOpen(false)}
+        onClose={() => setAppearanceSheetOpen(false)}
       />
 
       <SubEditSheet
