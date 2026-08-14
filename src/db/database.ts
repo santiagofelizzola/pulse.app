@@ -7,6 +7,7 @@ import * as migration004 from './migrations/004_lineup_marker_colors'
 import * as migration005 from './migrations/005_thumbnail_relative_paths'
 import * as migration006 from './migrations/006_lineup_pitch_style'
 import * as migration007 from './migrations/007_lineup_marker_style'
+import * as migration008 from './migrations/008_lineup_label_display'
 
 const DATABASE_NAME = 'pulse.db'
 
@@ -18,6 +19,7 @@ const migrations = [
   migration005,
   migration006,
   migration007,
+  migration008,
 ]
 
 let db: SQLiteDatabase | null = null

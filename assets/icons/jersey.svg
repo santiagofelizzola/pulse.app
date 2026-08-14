@@ -53,14 +53,17 @@
     stroke-linejoin="round"
   />
 
-  <!-- Collar. Separate token (not a literal color) so it can be set to whatever contrasts the
-       kit color, instead of a fixed white that vanishes on a white jersey. -->
+  <!-- Collar. Deliberately the SAME token as the body's outline: the collar is part of the shirt's
+       drawn outline, not a garment detail sitting on top of it. It was originally a fixed white,
+       which read as a hole punched in the jersey (and vanished entirely on a white kit); tying it
+       to the outline stroke makes the whole silhouette read as one outlined shape at marker size.
+       Slightly thinner than the body stroke (8 vs 11) so it reads as an interior line. -->
   <path
     d="M218 84
        C226 105 239 116 256 116
        C273 116 286 105 294 84"
     fill="none"
-    stroke="COLLAR_TOKEN"
+    stroke="OUTLINE_TOKEN"
     stroke-width="8"
     stroke-linecap="round"
   />

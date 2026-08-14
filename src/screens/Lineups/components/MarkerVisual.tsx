@@ -10,8 +10,10 @@ interface MarkerVisualProps {
   // Resolved by the caller from teamColor/keeperColor + isKeeper — undefined renders the
   // original default white marker, same as LineupMarker's `color` prop.
   color?: string
-  showRole: boolean
-  role?: string
+  // Whatever goes inside the shape, already resolved by getMarkerText from the lineup's
+  // labelDisplay — a role, a shirt number, or nothing. This component deliberately doesn't know
+  // which of the three it's been handed; it just centers the string.
+  text?: string
 }
 
 const DIAMETER = canvas.marker.diameter
@@ -21,7 +23,8 @@ const DIAMETER = canvas.marker.diameter
 const JERSEY_VIEWBOX = { width: 310, height: 350 }
 
 // The jersey renders deliberately LARGER than the circle rather than matching its 30px, and the
-// role text sets the floor on how small it can go. Only the torso panel can carry that text, and
+// marker text sets the floor on how small it can go (a two-letter role like "CM" is the widest
+// case — a shirt number is narrower and never the binding constraint). Only the torso panel can carry that text, and
 // the torso is exactly half the asset's full width (x 176-336 of 107-405 — sleeves take the
 // other half), so a jersey scaled to the circle's 30px leaves a ~15px torso for text needing
 // ~22px ("CM" at typography.label's 14px) and the label spills onto the sleeves. 1.875x puts the
@@ -46,7 +49,7 @@ const JERSEY_HEIGHT =
 // bottom (y=116) and the hem (y=410) puts the chest at (263-66)/350 = 0.563 of the ink box —
 // 0.063 below the 0.5 the container would otherwise center on. Expressed as a ratio of the
 // RENDERED height, so it survives the vertical squash above without needing to be re-derived.
-// Applied to the role text only; the shape itself stays centered so the marker's drag anchor is
+// Applied to the marker text only; the shape itself stays centered so the marker's drag anchor is
 // still its middle.
 const JERSEY_LABEL_OFFSET = JERSEY_HEIGHT * 0.063
 
@@ -59,13 +62,12 @@ export function getMarkerVisualSize(markerStyle: MarkerStyle): { width: number; 
     : { width: DIAMETER, height: DIAMETER }
 }
 
-// Pure shape rendering — circle or jersey, with the same centered role text either way. Shared
+// Pure shape rendering — circle or jersey, with the same centered text either way. Shared
 // by the real on-pitch LineupMarker and the Appearance sheet's Marker style preview tiles, so a
 // preview can never drift from what the pitch actually renders (same reasoning the pitch-style
 // tiles already use PitchBackground directly instead of a redrawn approximation).
-export function MarkerVisual({ markerStyle, color, showRole, role }: MarkerVisualProps) {
+export function MarkerVisual({ markerStyle, color, text }: MarkerVisualProps) {
   const resolvedColor = color ?? colors.surface
-  const roleText = showRole ? role ?? '' : ''
   const isJersey = markerStyle === 'jersey'
 
   return (
@@ -76,10 +78,10 @@ export function MarkerVisual({ markerStyle, color, showRole, role }: MarkerVisua
         <View style={[styles.circle, { backgroundColor: resolvedColor }]} />
       )}
       <Text
-        style={[styles.role, isJersey && styles.roleOnJersey, { color: getMarkerTextColor(resolvedColor) }]}
+        style={[styles.text, isJersey && styles.textOnJersey, { color: getMarkerTextColor(resolvedColor) }]}
         numberOfLines={1}
       >
-        {roleText}
+        {text ?? ''}
       </Text>
     </View>
   )
@@ -92,11 +94,9 @@ function JerseyShape({ color }: { color: string }) {
   const xml = applyJerseyColors(svgText, {
     kit: color,
     // Fixed tone regardless of kit color, so a light jersey still reads against a light pitch —
-    // the same role the circle's fixed borderColor plays below.
+    // the same role the circle's fixed borderColor plays below. The collar draws in this color
+    // too (see the asset), so the silhouette reads as one outlined shape.
     outline: colors.canvasInk,
-    // Contrasts the kit instead of the asset's original hardcoded white, which vanishes on a
-    // white jersey.
-    collar: getMarkerTextColor(color),
   })
 
   return <SvgXml xml={xml} width={JERSEY_WIDTH} height={JERSEY_HEIGHT} style={styles.jersey} />
@@ -117,17 +117,17 @@ const styles = StyleSheet.create({
     borderWidth: canvas.marker.border,
     borderColor: colors.canvasInk,
   },
-  // Absolute so the role text can sit on top of it rather than beside it; the container is sized
+  // Absolute so the marker text can sit on top of it rather than beside it; the container is sized
   // to the jersey exactly, so no insets are needed to place it.
   jersey: {
     position: 'absolute',
   },
-  role: {
+  text: {
     ...typography.label,
     fontFamily: fonts.semibold,
   },
   // Drops the label from the box's center onto the shirt's chest — see JERSEY_LABEL_OFFSET.
-  roleOnJersey: {
+  textOnJersey: {
     transform: [{ translateY: JERSEY_LABEL_OFFSET }],
   },
 })

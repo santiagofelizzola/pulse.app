@@ -95,6 +95,70 @@ export function isKeeperPosition(position: Pick<LineupPosition, 'isKeeper' | 'ro
   return position.isKeeper === true || position.role === 'GK'
 }
 
+// Roles are coach-editable free text, so every comparison against them goes through here rather
+// than matching the raw string.
+export function normalizeRole(role: string | undefined): string {
+  return (role ?? '').trim().toUpperCase()
+}
+
+// Right to left across the pitch.
+function byXDescending(a: LineupPosition, b: LineupPosition): number {
+  return b.x - a.x
+}
+
+/**
+ * Moves the players from an existing lineup onto a new formation's slots, so changing formation
+ * rearranges the team instead of wiping it — a coach who has named eleven players and tweaks the
+ * shape keeps every name and shirt number.
+ *
+ * Only `label` and `shirtNumber` travel: `role`, `x` and `y` belong to the new formation, which is
+ * the whole point of picking one. Matching runs keeper first, then same-role pairs sorted right to
+ * left on both sides (so two centre backs keep their sides instead of swapping), then a positional
+ * sweep for anything left over. At equal squad size the pools drain evenly, so nobody is dropped.
+ */
+export function carryOverPlayers(previous: LineupPosition[], slots: LineupPosition[]): LineupPosition[] {
+  if (previous.length === 0) return slots
+
+  const carried = new Map<string, LineupPosition>()
+  const claimed = new Set<string>()
+
+  const pair = (players: LineupPosition[], targets: LineupPosition[]) => {
+    const count = Math.min(players.length, targets.length)
+    for (let index = 0; index < count; index += 1) {
+      carried.set(targets[index].id, players[index])
+      claimed.add(players[index].id)
+    }
+  }
+
+  const availablePlayers = () => previous.filter((player) => !claimed.has(player.id))
+  const openSlots = () => slots.filter((slot) => !carried.has(slot.id))
+
+  // The keeper is matched on isKeeperPosition rather than the role string, so the name still
+  // follows the gloves across a switch to 'custom', which strips every role but keeps isKeeper.
+  pair(availablePlayers().filter(isKeeperPosition), openSlots().filter(isKeeperPosition))
+
+  // Same role, both sides sorted right to left: the right-sided player of a duplicated role lands
+  // on the right-sided slot of that role, so a back four doesn't invert itself.
+  const rolesInNewShape = new Set(openSlots().map((slot) => normalizeRole(slot.role)).filter(Boolean))
+  rolesInNewShape.forEach((role) => {
+    pair(
+      availablePlayers().filter((player) => normalizeRole(player.role) === role).sort(byXDescending),
+      openSlots().filter((slot) => normalizeRole(slot.role) === role).sort(byXDescending)
+    )
+  })
+
+  // Everyone the role passes couldn't place: a winger moving into a shape with no wingers, a
+  // hand-renamed role that matches nothing, and — the whole squad at once — a 'custom' formation,
+  // whose slots carry no roles at all. Both pools are still in array order (keeper first, then back
+  // to front), so this pairs them positionally rather than arbitrarily.
+  pair(availablePlayers(), openSlots())
+
+  return slots.map((slot) => {
+    const player = carried.get(slot.id)
+    return player ? { ...slot, label: player.label, shirtNumber: player.shirtNumber } : slot
+  })
+}
+
 // No formation semantics — reuses the squad size's first named formation's positions (a
 // sensible non-overlapping starting layout) but strips every role, so markers start blank and
 // fully free-drag/relabel rather than implying an unpicked formation's shape. isKeeper is kept

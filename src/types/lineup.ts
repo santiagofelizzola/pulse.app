@@ -5,6 +5,10 @@ import type { CanvasBackground, PitchStyle } from './canvas'
 // which is why this lives here rather than alongside PitchStyle in canvas.ts.
 export type MarkerStyle = 'circle' | 'jersey'
 
+// What every marker on a lineup shows INSIDE its shape. Replaces the earlier `showRoleLabels`
+// boolean, which was this same choice with only the first two members.
+export type LabelDisplay = 'blank' | 'number' | 'position'
+
 export type SquadSize = 7 | 9 | 11
 
 // Formation values are only meaningful together with squadSize —
@@ -20,6 +24,11 @@ export interface LineupPosition {
   id: string
   label: string              // player name or 1–2 char initials, shown BELOW the marker
   role?: string              // positional slot abbreviation (GK, CB, ST, …), shown INSIDE the marker
+  // Jersey number, also shown INSIDE the marker — which of role/shirtNumber actually renders is
+  // the lineup's labelDisplay. Auto-assigned from role the first time a lineup switches to
+  // 'number' (see assignShirtNumbers) and freely overridable per player; never cleared by a
+  // display toggle, so it survives a trip through 'blank'/'position' unchanged.
+  shirtNumber?: number
   x: number                  // normalized 0..1 across the pitch
   y: number                  // normalized 0..1 down the pitch
   // Set on the goalkeeper slot by getFormationSlots (and preserved through the 'custom' formation's
@@ -43,7 +52,7 @@ export interface Lineup {
   formation?: Formation      // must be valid for squadSize; 'custom' always allowed
   background: CanvasBackground   // typically 'full-pitch'
   positions: LineupPosition[]
-  showRoleLabels?: boolean   // whether markers render their `role` text or appear blank; defaults true
+  labelDisplay?: LabelDisplay  // what markers show inside them; defaults 'blank'
   subs?: SubEntry[]
   notes?: string
   // Marker fill colors — teamColor applies to every outfield position, keeperColor to the one
@@ -66,7 +75,7 @@ export interface CreateLineupInput {
   squadSize: SquadSize
   formation?: Formation
   positions: LineupPosition[]
-  showRoleLabels?: boolean
+  labelDisplay?: LabelDisplay
   subs?: SubEntry[]
   notes?: string
   teamColor?: string

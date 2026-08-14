@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { colors, radius, spacing, typography } from '../../../theme/theme'
+import { colors, radius, spacing, typography } from '../../theme/theme'
 
 interface SegmentedToggleProps<T extends string> {
   options: Array<{ value: T; label: string }>

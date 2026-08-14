@@ -3,17 +3,28 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { Alert, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Canvas } from '@shopify/react-native-skia'
 import { randomUUID } from 'expo-crypto'
-import { Eye, EyeOff, LayoutGrid, Palette, Save, X } from 'lucide-react-native'
+import { LayoutGrid, Palette, Save, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getPitchAspectRatio, PitchBackground } from '../Canvas/components/PitchBackground'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
 import type { RootStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
-import { getFormationSlots, isKeeperPosition } from '../../utils/formationSlots'
+import { carryOverPlayers, getFormationSlots, isKeeperPosition } from '../../utils/formationSlots'
+import { DEFAULT_LABEL_DISPLAY, getMarkerText } from '../../utils/labelDisplay'
 import { DEFAULT_MARKER_STYLE } from '../../utils/markerStyles'
 import { DEFAULT_PITCH_STYLE, PITCH_STYLES } from '../../utils/pitchStyles'
-import type { CreateLineupInput, Formation, LineupPosition, MarkerStyle, PitchStyle, SquadSize, SubEntry } from '../../types'
+import { assignShirtNumbers } from '../../utils/shirtNumbers'
+import type {
+  CreateLineupInput,
+  Formation,
+  LabelDisplay,
+  LineupPosition,
+  MarkerStyle,
+  PitchStyle,
+  SquadSize,
+  SubEntry,
+} from '../../types'
 import { FormationPicker } from './components/FormationPicker'
 import { LineupAppearanceSheet } from './components/LineupAppearanceSheet'
 import { LineupMarker } from './components/LineupMarker'
@@ -39,7 +50,7 @@ export default function LineupEditorScreen() {
   const [formation, setFormation] = useState<Formation | null>(null)
   const [positions, setPositions] = useState<LineupPosition[]>([])
   const [name, setName] = useState('')
-  const [showRoleLabels, setShowRoleLabels] = useState(true)
+  const [labelDisplay, setLabelDisplay] = useState<LabelDisplay>(DEFAULT_LABEL_DISPLAY)
   const [subs, setSubs] = useState<SubEntry[]>([])
   const [teamColor, setTeamColor] = useState<string | undefined>(undefined)
   const [keeperColor, setKeeperColor] = useState<string | undefined>(undefined)
@@ -69,7 +80,7 @@ export default function LineupEditorScreen() {
       setFormation(loaded.formation ?? null)
       setPositions(loaded.positions)
       setName(loaded.name)
-      setShowRoleLabels(loaded.showRoleLabels ?? true)
+      setLabelDisplay(loaded.labelDisplay ?? DEFAULT_LABEL_DISPLAY)
       setSubs(loaded.subs ?? [])
       setTeamColor(loaded.teamColor)
       setKeeperColor(loaded.keeperColor)
@@ -131,10 +142,18 @@ export default function LineupEditorScreen() {
     (next: Formation) => {
       if (!squadSize) return
       setFormation(next)
-      setPositions(getFormationSlots(squadSize, next))
+      setPositions((prev) => {
+        // The squad is the same eleven players in a new shape, so their names and numbers move
+        // onto the new slots rather than being thrown away. Changing SQUAD SIZE is the case that
+        // still resets — it clears positions first, which makes this a no-op.
+        const carried = carryOverPlayers(prev, getFormationSlots(squadSize, next))
+        // Gap-fill around whatever numbers just came across, so a coach already looking at numbers
+        // sees the preserved ones plus fresh numbers for any player who never had one.
+        return labelDisplay === 'number' ? assignShirtNumbers(carried) : carried
+      })
       dirtyRef.current = true
     },
-    [squadSize]
+    [squadSize, labelDisplay]
   )
 
   const handleMove = useCallback((id: string, x: number, y: number) => {
@@ -150,7 +169,7 @@ export default function LineupEditorScreen() {
   )
 
   const handleSavePosition = useCallback(
-    (patch: { role?: string; label: string }) => {
+    (patch: { role?: string; label: string; shirtNumber?: number }) => {
       if (!editingPosition) return
       setPositions((prev) => prev.map((position) => (position.id === editingPosition.id ? { ...position, ...patch } : position)))
       dirtyRef.current = true
@@ -158,8 +177,14 @@ export default function LineupEditorScreen() {
     [editingPosition]
   )
 
-  const handleToggleRoleLabels = useCallback(() => {
-    setShowRoleLabels((prev) => !prev)
+  const handleSelectLabelDisplay = useCallback((next: LabelDisplay) => {
+    setLabelDisplay(next)
+    // Numbers are invented the moment the coach first asks to see them, and only for players who
+    // don't have one yet — so overrides survive, and a formation change (which replaces every
+    // position with a fresh numberless slot) refills on the next visit to this mode. Switching
+    // AWAY deliberately does nothing: the numbers stay stored, just unrendered, so a trip through
+    // blank/position and back shows exactly the same numbers.
+    if (next === 'number') setPositions((prev) => assignShirtNumbers(prev))
     dirtyRef.current = true
   }, [])
 
@@ -222,7 +247,7 @@ export default function LineupEditorScreen() {
           squadSize,
           formation: formation ?? undefined,
           positions,
-          showRoleLabels,
+          labelDisplay,
           subs,
           teamColor,
           keeperColor,
@@ -243,7 +268,7 @@ export default function LineupEditorScreen() {
         setSaving(false)
       }
     },
-    [squadSize, formation, positions, showRoleLabels, subs, teamColor, keeperColor, pitchStyle, markerStyle, lineupId, navigation]
+    [squadSize, formation, positions, labelDisplay, subs, teamColor, keeperColor, pitchStyle, markerStyle, lineupId, navigation]
   )
 
   const isPitchEmpty = positions.length === 0
@@ -268,13 +293,8 @@ export default function LineupEditorScreen() {
               <Pressable onPress={() => setFormationPickerOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
                 <LayoutGrid size={22} color={colors.textPrimary} />
               </Pressable>
-              <Pressable onPress={handleToggleRoleLabels} hitSlop={layout.hitSlop} style={styles.topBarButton}>
-                {showRoleLabels ? (
-                  <Eye size={22} color={colors.textPrimary} />
-                ) : (
-                  <EyeOff size={22} color={colors.textPrimary} />
-                )}
-              </Pressable>
+              {/* No standalone label toggle here: what a marker says is now a three-way choice
+                  living with the rest of the look, in the Appearance sheet below. */}
               <Pressable onPress={() => setAppearanceSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
                 <Palette size={22} color={colors.textPrimary} />
               </Pressable>
@@ -312,7 +332,7 @@ export default function LineupEditorScreen() {
                       key={position.id}
                       position={position}
                       canvasSize={canvasSize}
-                      showRole={showRoleLabels}
+                      text={getMarkerText(position, labelDisplay)}
                       markerStyle={markerStyle}
                       color={isKeeperPosition(position) ? keeperColor : teamColor}
                       captionColor={PITCH_STYLES[pitchStyle].captionColor}
@@ -368,10 +388,12 @@ export default function LineupEditorScreen() {
         visible={appearanceSheetOpen}
         pitchStyle={pitchStyle}
         markerStyle={markerStyle}
+        labelDisplay={labelDisplay}
         teamColor={teamColor}
         keeperColor={keeperColor}
         onSelectPitchStyle={handleSelectPitchStyle}
         onSelectMarkerStyle={handleSelectMarkerStyle}
+        onSelectLabelDisplay={handleSelectLabelDisplay}
         onSelectTeamColor={handleSelectTeamColor}
         onSelectKeeperColor={handleSelectKeeperColor}
         onClose={() => setAppearanceSheetOpen(false)}

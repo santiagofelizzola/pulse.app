@@ -37,6 +37,13 @@ export const OBJECT_COLOR_SWATCHES = [
   colors.canvasInk,
 ] as const
 
+// The same swatches led by an explicit white, for the lineup's team/keeper marker colors. White is
+// what an uncolored marker already renders as (MarkerVisual's `color ?? colors.surface`), but the
+// picker can only ever SET a color — without this swatch a coach who tried a kit color had no way
+// back to the default. Lineup-only on purpose: on the canvas these swatches tint cones and discs
+// against a white pitch, where white would be an invisible object rather than a useful choice.
+export const LINEUP_MARKER_SWATCHES = [colors.surface, ...OBJECT_COLOR_SWATCHES] as const
+
 // Picks readable label text for an arbitrary marker fill color — a light fill (or none, i.e. the
 // default white marker) keeps the usual dark ink text; a dark fill (e.g. the canvasInk or error
 // swatches) flips to white instead of going illegible against its own background. Perceived
@@ -149,20 +156,20 @@ export function applyCurrentColor(svgText: string, hexColor: string): string {
 }
 
 // Jersey marker asset — a plain RN view (LineupMarker isn't inside the Skia <Canvas>), so it
-// renders via SvgXml like the palette icons. Its fill, outline, and collar are independent
-// colors baked into the asset as three distinct tokens (see assets/icons/jersey.svg) rather than
-// a single currentColor, since SvgXml's `color` prop can only resolve one value — the outline
-// needs to stay a fixed tone regardless of kit color, and the collar needs to contrast the kit.
+// renders via SvgXml like the palette icons. Its fill and its outline are independent colors baked
+// into the asset as two distinct tokens (see assets/icons/jersey.svg) rather than a single
+// currentColor, since SvgXml's `color` prop can only resolve one value — the outline needs to stay
+// a fixed tone regardless of kit color. The collar draws in the outline color too: it's part of the
+// shirt's outline rather than a separate garment detail, so it takes no token of its own.
 const JERSEY_ASSET = require('../../assets/icons/jersey.svg') as number
 
 export function applyJerseyColors(
   svgText: string,
-  colorsToApply: { kit: string; outline: string; collar: string }
+  colorsToApply: { kit: string; outline: string }
 ): string {
   return svgText
     .split('currentColor').join(colorsToApply.kit)
     .split('OUTLINE_TOKEN').join(colorsToApply.outline)
-    .split('COLLAR_TOKEN').join(colorsToApply.collar)
 }
 
 // Raw (processed) SVG text — shared by two consumers: the Skia canvas (parses it into an

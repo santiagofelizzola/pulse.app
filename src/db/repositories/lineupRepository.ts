@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
+import { DEFAULT_LABEL_DISPLAY, isLabelDisplay } from '../../utils/labelDisplay'
 import { DEFAULT_MARKER_STYLE, isMarkerStyle } from '../../utils/markerStyles'
 import { DEFAULT_PITCH_STYLE, isPitchStyle } from '../../utils/pitchStyles'
 import type {
@@ -20,7 +21,7 @@ interface LineupRow {
   formation: Formation | null
   background: CanvasBackground
   positions: string
-  show_role_labels: number
+  label_display: string | null
   subs: string
   notes: string | null
   team_color: string | null
@@ -40,7 +41,7 @@ function toLineup(row: LineupRow): Lineup {
     formation: row.formation ?? undefined,
     background: row.background,
     positions: JSON.parse(row.positions) as LineupPosition[],
-    showRoleLabels: row.show_role_labels !== 0,
+    labelDisplay: isLabelDisplay(row.label_display) ? row.label_display : DEFAULT_LABEL_DISPLAY,
     subs: JSON.parse(row.subs) as SubEntry[],
     notes: row.notes ?? undefined,
     teamColor: row.team_color ?? undefined,
@@ -77,7 +78,7 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     formation: input.formation,
     background: 'full-pitch',
     positions: input.positions,
-    showRoleLabels: input.showRoleLabels ?? true,
+    labelDisplay: input.labelDisplay ?? DEFAULT_LABEL_DISPLAY,
     subs: input.subs ?? [],
     notes: input.notes,
     teamColor: input.teamColor,
@@ -89,7 +90,9 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
   }
 
   db.runSync(
-    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, show_role_labels, subs, notes, team_color, keeper_color, pitch_style, marker_style, created_at, updated_at)
+    // show_role_labels is deliberately absent: migration 008 replaced it with label_display and
+    // left the column behind with its DEFAULT 1, which is what fills it here.
+    `INSERT INTO lineups (id, name, match_date, squad_size, formation, background, positions, label_display, subs, notes, team_color, keeper_color, pitch_style, marker_style, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     lineup.id,
     lineup.name,
@@ -98,7 +101,7 @@ async function create(input: CreateLineupInput): Promise<Lineup> {
     lineup.formation ?? null,
     lineup.background,
     JSON.stringify(lineup.positions),
-    lineup.showRoleLabels ? 1 : 0,
+    lineup.labelDisplay ?? DEFAULT_LABEL_DISPLAY,
     JSON.stringify(lineup.subs),
     lineup.notes ?? null,
     lineup.teamColor ?? null,
@@ -125,14 +128,14 @@ async function update(id: string, patch: Partial<CreateLineupInput>): Promise<Li
 
   db.runSync(
     `UPDATE lineups
-     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, show_role_labels = ?, subs = ?, notes = ?, team_color = ?, keeper_color = ?, pitch_style = ?, marker_style = ?, updated_at = ?
+     SET name = ?, match_date = ?, squad_size = ?, formation = ?, positions = ?, label_display = ?, subs = ?, notes = ?, team_color = ?, keeper_color = ?, pitch_style = ?, marker_style = ?, updated_at = ?
      WHERE id = ?`,
     updated.name,
     updated.matchDate ?? null,
     updated.squadSize,
     updated.formation ?? null,
     JSON.stringify(updated.positions),
-    updated.showRoleLabels ? 1 : 0,
+    updated.labelDisplay ?? DEFAULT_LABEL_DISPLAY,
     JSON.stringify(updated.subs ?? []),
     updated.notes ?? null,
     updated.teamColor ?? null,

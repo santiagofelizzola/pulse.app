@@ -3,22 +3,26 @@ import { Canvas } from '@shopify/react-native-skia'
 import { Check } from 'lucide-react-native'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { SegmentedToggle } from '../../../components/ui/SegmentedToggle'
 import { PitchBackground } from '../../Canvas/components/PitchBackground'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
-import { OBJECT_COLOR_SWATCHES } from '../../../utils/canvasUtils'
+import { getMarkerTextColor, LINEUP_MARKER_SWATCHES } from '../../../utils/canvasUtils'
+import { LABEL_DISPLAY_OPTIONS } from '../../../utils/labelDisplay'
 import { MARKER_STYLE_OPTIONS } from '../../../utils/markerStyles'
 import { PITCH_STYLES, PITCH_STYLE_OPTIONS } from '../../../utils/pitchStyles'
-import type { MarkerStyle, PitchStyle } from '../../../types'
+import type { LabelDisplay, MarkerStyle, PitchStyle } from '../../../types'
 import { MarkerVisual } from './MarkerVisual'
 
 interface LineupAppearanceSheetProps {
   visible: boolean
   pitchStyle: PitchStyle
   markerStyle: MarkerStyle
+  labelDisplay: LabelDisplay
   teamColor?: string
   keeperColor?: string
   onSelectPitchStyle: (style: PitchStyle) => void
   onSelectMarkerStyle: (style: MarkerStyle) => void
+  onSelectLabelDisplay: (display: LabelDisplay) => void
   onSelectTeamColor: (color: string) => void
   onSelectKeeperColor: (color: string) => void
   onClose: () => void
@@ -31,7 +35,8 @@ const TILE_HEIGHT = 92
 const TILE_MARGIN = 6
 const MARKER_TILE_SIZE = 72
 
-// Everything about how a lineup LOOKS, in one sheet: the pitch surface, then the marker colors.
+// Everything about how a lineup LOOKS, in one sheet: the pitch surface, the marker shape and what
+// it says, then the marker colors.
 // Marker colors use the same preset-swatch mechanism as the canvas's ColorPicker, extended to two
 // independent targets — every outfield marker shares teamColor, the goalkeeper's marker uses
 // keeperColor instead (see LineupPosition.isKeeper).
@@ -39,10 +44,12 @@ export function LineupAppearanceSheet({
   visible,
   pitchStyle,
   markerStyle,
+  labelDisplay,
   teamColor,
   keeperColor,
   onSelectPitchStyle,
   onSelectMarkerStyle,
+  onSelectLabelDisplay,
   onSelectTeamColor,
   onSelectKeeperColor,
   onClose,
@@ -91,13 +98,18 @@ export function LineupAppearanceSheet({
             >
               <View style={[styles.markerTile, isSelected && styles.tileSelected]}>
                 {/* The preview is the real marker renderer, so it can never drift from the pitch. */}
-                <MarkerVisual markerStyle={option.value} color={teamColor} showRole={false} />
+                <MarkerVisual markerStyle={option.value} color={teamColor} />
               </View>
               <Text style={styles.tileLabel}>{option.label}</Text>
             </Pressable>
           )
         })}
       </View>
+
+      {/* Sits directly under Marker style: the two together are "what a marker looks like" (its
+          shape) and "what it says" (its text), before the sheet moves on to color. */}
+      <Text style={[styles.label, styles.sectionLabel]}>Marker label</Text>
+      <SegmentedToggle options={LABEL_DISPLAY_OPTIONS} value={labelDisplay} onChange={onSelectLabelDisplay} />
 
       <Text style={[styles.label, styles.sectionLabel]}>Team color — every outfield player</Text>
       <SwatchRow selectedColor={teamColor} onSelect={onSelectTeamColor} />
@@ -111,12 +123,14 @@ export function LineupAppearanceSheet({
 function SwatchRow({ selectedColor, onSelect }: { selectedColor?: string; onSelect: (color: string) => void }) {
   return (
     <View style={styles.row}>
-      {OBJECT_COLOR_SWATCHES.map((color) => {
+      {LINEUP_MARKER_SWATCHES.map((color) => {
         const isSelected = color.toLowerCase() === (selectedColor ?? '').toLowerCase()
         return (
           <Pressable key={color} accessibilityLabel={color} onPress={() => onSelect(color)} style={styles.swatchWrapper}>
             <View style={[styles.swatch, { backgroundColor: color }, isSelected && styles.swatchSelected]}>
-              {isSelected ? <Check size={18} color={colors.textInverse} /> : null}
+              {/* Same contrast rule the marker text uses — a fixed white tick would disappear on
+                  the white swatch, which is exactly the one a coach reverting needs to see. */}
+              {isSelected ? <Check size={18} color={getMarkerTextColor(color)} /> : null}
             </View>
           </Pressable>
         )

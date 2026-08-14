@@ -10,7 +10,9 @@ import { getMarkerVisualSize, MarkerVisual } from './MarkerVisual'
 interface LineupMarkerProps {
   position: LineupPosition
   canvasSize: { width: number; height: number }
-  showRole: boolean
+  // Text for inside the shape, resolved by the screen via getMarkerText from the lineup's
+  // labelDisplay — empty in 'blank' mode. The name caption below is unaffected by that choice.
+  text?: string
   markerStyle: MarkerStyle
   // Resolved by the screen from teamColor/keeperColor + position.isKeeper — undefined renders
   // the original default white marker.
@@ -45,7 +47,7 @@ function clamp01(value: number): number {
 export function LineupMarker({
   position,
   canvasSize,
-  showRole,
+  text,
   markerStyle,
   color,
   captionColor,
@@ -119,7 +121,7 @@ export function LineupMarker({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.container, style]}>
-        <MarkerVisual markerStyle={markerStyle} color={color} showRole={showRole} role={position.role} />
+        <MarkerVisual markerStyle={markerStyle} color={color} text={text} />
         <Text
           style={[
             styles.label,
