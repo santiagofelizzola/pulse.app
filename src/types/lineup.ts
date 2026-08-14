@@ -1,5 +1,10 @@
 import type { CanvasBackground, PitchStyle } from './canvas'
 
+// Per-lineup marker shape. Only touches LineupMarker — the free-draw Canvas's own player
+// markers are a separate component/type (PlayerMarker in canvas.ts) unaffected by this choice,
+// which is why this lives here rather than alongside PitchStyle in canvas.ts.
+export type MarkerStyle = 'circle' | 'jersey'
+
 export type SquadSize = 7 | 9 | 11
 
 // Formation values are only meaningful together with squadSize —
@@ -48,6 +53,9 @@ export interface Lineup {
   // Pitch surface preset, per lineup and independent of any app-level theme. Unset renders the
   // original white pitch with dark markings.
   pitchStyle?: PitchStyle
+  // Marker shape for every position on this lineup — circle (default) or jersey silhouette.
+  // Unset renders the original circle.
+  markerStyle?: MarkerStyle
   createdAt: string
   updatedAt: string
 }
@@ -64,4 +72,5 @@ export interface CreateLineupInput {
   teamColor?: string
   keeperColor?: string
   pitchStyle?: PitchStyle
+  markerStyle?: MarkerStyle
 }

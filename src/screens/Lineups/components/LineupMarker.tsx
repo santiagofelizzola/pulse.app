@@ -3,14 +3,15 @@ import { StyleSheet, Text } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 
-import { canvas, colors, fonts, layout, radius, spacing, typography } from '../../../theme/theme'
-import { getMarkerTextColor } from '../../../utils/canvasUtils'
-import type { LineupPosition } from '../../../types'
+import { canvas, colors, fonts, layout, spacing, typography } from '../../../theme/theme'
+import type { LineupPosition, MarkerStyle } from '../../../types'
+import { getMarkerVisualSize, MarkerVisual } from './MarkerVisual'
 
 interface LineupMarkerProps {
   position: LineupPosition
   canvasSize: { width: number; height: number }
   showRole: boolean
+  markerStyle: MarkerStyle
   // Resolved by the screen from teamColor/keeperColor + position.isKeeper — undefined renders
   // the original default white marker.
   color?: string
@@ -23,7 +24,6 @@ interface LineupMarkerProps {
   onPress: (id: string) => void
 }
 
-const DIAMETER = canvas.marker.diameter
 const CONTAINER_WIDTH = 72
 // Boundary between "tap" and "drag" — a real drag travels well past this; a tap's natural finger
 // jitter shouldn't. Shared by the Tap gesture's maxDistance and the Pan gesture's minDistance so
@@ -46,6 +46,7 @@ export function LineupMarker({
   position,
   canvasSize,
   showRole,
+  markerStyle,
   color,
   captionColor,
   captionGlowColor,
@@ -105,20 +106,20 @@ export function LineupMarker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position.x, position.y])
 
+  // Half the SHAPE's height, not a fixed 30px — the jersey is taller than the circle, and using
+  // a constant here would hang it below its stored position by the difference.
+  const visualHeight = getMarkerVisualSize(markerStyle).height
+
   const style = useAnimatedStyle(() => ({
     left: baseX - CONTAINER_WIDTH / 2,
-    top: baseY - DIAMETER / 2,
+    top: baseY - visualHeight / 2,
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
   }))
 
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.container, style]}>
-        <Animated.View style={[styles.marker, { backgroundColor: color ?? colors.surface }]}>
-          <Text style={[styles.role, { color: getMarkerTextColor(color) }]} numberOfLines={1}>
-            {showRole ? position.role ?? '' : ''}
-          </Text>
-        </Animated.View>
+        <MarkerVisual markerStyle={markerStyle} color={color} showRole={showRole} role={position.role} />
         <Text
           style={[
             styles.label,
@@ -141,19 +142,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CONTAINER_WIDTH,
     alignItems: 'center',
-  },
-  marker: {
-    width: DIAMETER,
-    height: DIAMETER,
-    borderRadius: radius.pill,
-    borderWidth: canvas.marker.border,
-    borderColor: colors.canvasInk,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  role: {
-    ...typography.label,
-    fontFamily: fonts.semibold,
   },
   label: {
     ...typography.caption,

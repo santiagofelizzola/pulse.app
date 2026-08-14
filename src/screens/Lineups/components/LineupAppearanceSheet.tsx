@@ -6,15 +6,19 @@ import { BottomSheet } from '../../../components/ui/BottomSheet'
 import { PitchBackground } from '../../Canvas/components/PitchBackground'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { OBJECT_COLOR_SWATCHES } from '../../../utils/canvasUtils'
+import { MARKER_STYLE_OPTIONS } from '../../../utils/markerStyles'
 import { PITCH_STYLES, PITCH_STYLE_OPTIONS } from '../../../utils/pitchStyles'
-import type { PitchStyle } from '../../../types'
+import type { MarkerStyle, PitchStyle } from '../../../types'
+import { MarkerVisual } from './MarkerVisual'
 
 interface LineupAppearanceSheetProps {
   visible: boolean
   pitchStyle: PitchStyle
+  markerStyle: MarkerStyle
   teamColor?: string
   keeperColor?: string
   onSelectPitchStyle: (style: PitchStyle) => void
+  onSelectMarkerStyle: (style: MarkerStyle) => void
   onSelectTeamColor: (color: string) => void
   onSelectKeeperColor: (color: string) => void
   onClose: () => void
@@ -25,6 +29,7 @@ const SWATCH_SIZE = 44
 const TILE_WIDTH = 148
 const TILE_HEIGHT = 92
 const TILE_MARGIN = 6
+const MARKER_TILE_SIZE = 72
 
 // Everything about how a lineup LOOKS, in one sheet: the pitch surface, then the marker colors.
 // Marker colors use the same preset-swatch mechanism as the canvas's ColorPicker, extended to two
@@ -33,9 +38,11 @@ const TILE_MARGIN = 6
 export function LineupAppearanceSheet({
   visible,
   pitchStyle,
+  markerStyle,
   teamColor,
   keeperColor,
   onSelectPitchStyle,
+  onSelectMarkerStyle,
   onSelectTeamColor,
   onSelectKeeperColor,
   onClose,
@@ -64,6 +71,27 @@ export function LineupAppearanceSheet({
                     style={PITCH_STYLES[option.value]}
                   />
                 </Canvas>
+              </View>
+              <Text style={styles.tileLabel}>{option.label}</Text>
+            </Pressable>
+          )
+        })}
+      </View>
+
+      <Text style={[styles.label, styles.sectionLabel]}>Marker style</Text>
+      <View style={styles.tileRow}>
+        {MARKER_STYLE_OPTIONS.map((option) => {
+          const isSelected = option.value === markerStyle
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityLabel={option.label}
+              onPress={() => onSelectMarkerStyle(option.value)}
+              style={styles.markerTileWrapper}
+            >
+              <View style={[styles.markerTile, isSelected && styles.tileSelected]}>
+                {/* The preview is the real marker renderer, so it can never drift from the pitch. */}
+                <MarkerVisual markerStyle={option.value} color={teamColor} showRole={false} />
               </View>
               <Text style={styles.tileLabel}>{option.label}</Text>
             </Pressable>
@@ -129,6 +157,19 @@ const styles = StyleSheet.create({
   tileCanvas: {
     width: TILE_WIDTH,
     height: TILE_HEIGHT,
+  },
+  markerTileWrapper: {
+    width: MARKER_TILE_SIZE,
+  },
+  markerTile: {
+    width: MARKER_TILE_SIZE,
+    height: MARKER_TILE_SIZE,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceHover,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tileLabel: {
     ...typography.caption,

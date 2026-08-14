@@ -6,10 +6,19 @@ import * as migration003 from './migrations/003_planning_fields'
 import * as migration004 from './migrations/004_lineup_marker_colors'
 import * as migration005 from './migrations/005_thumbnail_relative_paths'
 import * as migration006 from './migrations/006_lineup_pitch_style'
+import * as migration007 from './migrations/007_lineup_marker_style'
 
 const DATABASE_NAME = 'pulse.db'
 
-const migrations = [migration001, migration002, migration003, migration004, migration005, migration006]
+const migrations = [
+  migration001,
+  migration002,
+  migration003,
+  migration004,
+  migration005,
+  migration006,
+  migration007,
+]
 
 let db: SQLiteDatabase | null = null
 

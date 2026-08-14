@@ -148,48 +148,73 @@ export function applyCurrentColor(svgText: string, hexColor: string): string {
   return svgText.split('currentColor').join(hexColor)
 }
 
+// Jersey marker asset — a plain RN view (LineupMarker isn't inside the Skia <Canvas>), so it
+// renders via SvgXml like the palette icons. Its fill, outline, and collar are independent
+// colors baked into the asset as three distinct tokens (see assets/icons/jersey.svg) rather than
+// a single currentColor, since SvgXml's `color` prop can only resolve one value — the outline
+// needs to stay a fixed tone regardless of kit color, and the collar needs to contrast the kit.
+const JERSEY_ASSET = require('../../assets/icons/jersey.svg') as number
+
+export function applyJerseyColors(
+  svgText: string,
+  colorsToApply: { kit: string; outline: string; collar: string }
+): string {
+  return svgText
+    .split('currentColor').join(colorsToApply.kit)
+    .split('OUTLINE_TOKEN').join(colorsToApply.outline)
+    .split('COLLAR_TOKEN').join(colorsToApply.collar)
+}
+
 // Raw (processed) SVG text — shared by two consumers: the Skia canvas (parses it into an
 // SkSVG) and the tool-palette button icons (rendered as a normal RN view via react-native-svg's
 // SvgXml, since palette buttons live outside the Skia <Canvas>). One loader, two renderers.
 const svgTextCache = new Map<string, string | null>()
 const svgTextLoads = new Map<string, Promise<string | null>>()
 
-async function loadEquipmentSvgText(key: EquipmentAssetKey): Promise<string | null> {
-  if (svgTextCache.has(key)) return svgTextCache.get(key) ?? null
+async function loadSvgText(cacheKey: string, module: number, thicken: boolean): Promise<string | null> {
+  if (svgTextCache.has(cacheKey)) return svgTextCache.get(cacheKey) ?? null
 
-  const existing = svgTextLoads.get(key)
+  const existing = svgTextLoads.get(cacheKey)
   if (existing) return existing
 
   const promise = (async () => {
-    const config = EQUIPMENT_ASSETS[key]
-    const asset = Asset.fromModule(config.module)
+    const asset = Asset.fromModule(module)
     await asset.downloadAsync()
     if (!asset.localUri) return null
 
     const raw = await FileSystem.readAsStringAsync(asset.localUri)
-    const processed = config.thicken ? thickenStrokeWidths(raw, BALL_STROKE_MULTIPLIER) : raw
-    svgTextCache.set(key, processed)
+    const processed = thicken ? thickenStrokeWidths(raw, BALL_STROKE_MULTIPLIER) : raw
+    svgTextCache.set(cacheKey, processed)
     return processed
   })()
 
-  svgTextLoads.set(key, promise)
+  svgTextLoads.set(cacheKey, promise)
   return promise
 }
 
-export function useEquipmentSvgText(key: EquipmentAssetKey): string | null {
-  const [text, setText] = useState<string | null>(svgTextCache.get(key) ?? null)
+function useSvgText(cacheKey: string, module: number, thicken: boolean): string | null {
+  const [text, setText] = useState<string | null>(svgTextCache.get(cacheKey) ?? null)
 
   useEffect(() => {
     let cancelled = false
-    loadEquipmentSvgText(key).then((result) => {
+    loadSvgText(cacheKey, module, thicken).then((result) => {
       if (!cancelled) setText(result)
     })
     return () => {
       cancelled = true
     }
-  }, [key])
+  }, [cacheKey, module, thicken])
 
   return text
+}
+
+export function useEquipmentSvgText(key: EquipmentAssetKey): string | null {
+  const config = EQUIPMENT_ASSETS[key]
+  return useSvgText(key, config.module, config.thicken)
+}
+
+export function useJerseySvgText(): string | null {
+  return useSvgText('jersey', JERSEY_ASSET, false)
 }
 
 // Keyed by the exact (already-recolored, if applicable) text, so distinctly-colored instances

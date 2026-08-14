@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="310" height="350" viewBox="101 66 310 350" preserveAspectRatio="none">
+  <title>Soccer Jersey Icon</title>
+  <desc>Clean jersey icon based on the uploaded lineup screenshot.</desc>
+
+  <!-- preserveAspectRatio="none" is required, not incidental: MarkerVisual deliberately renders
+       this at a height that does NOT match the viewBox aspect (see JERSEY_VERTICAL_SQUASH) to
+       broaden the shirt. Without it the SVG would letterbox to fit and just render smaller
+       instead of squashing.
+
+       Jersey body. Fill is the kit color (currentColor, resolved by the caller). Outline is a
+       separate token from fill so a light kit can still get a fixed-tone border for legibility
+       against a light pitch, independent of the kit color — see applyJerseyColors.
+
+       viewBox is cropped to the path's stroked bounds with no meaningful slack: the body path
+       spans x:107-405, y:72-410, and this stroke adds half its width (5.5) on every side —
+       giving 101,66 310x350. Zero margin matters because MarkerVisual sizes the jersey by this
+       box, so any padding baked in here shrinks the rendered jersey. (The original 0 0 512 512
+       viewBox was ~35% margin, which is what made the jersey render smaller than the circle.)
+
+       stroke-width is calibrated against the render scale, not authored at face value: the
+       jersey renders 56.25px wide (MarkerVisual's JERSEY_WIDTH), so this box scales by
+       56.25/310 = 0.181 and 11 lands at 2.00px on screen — parity with the circle marker's 2px
+       border (canvas.marker.border). Same calibration problem BALL_STROKE_MULTIPLIER solves for
+       the ball icons. Note the two are coupled: changing stroke-width also moves the stroked
+       bounds above, so re-derive both together — stroke = 2 / (JERSEY_WIDTH / viewBoxWidth).
+
+       Because the vertical squash makes the scale non-uniform, one stroke-width cannot render
+       evenly on both axes: side edges scale by x (2.00px), top/bottom by y (1.50px). Calibrated
+       to the sides, which are the long, visually dominant edges and the ones sitting next to the
+       circle marker's 2px border. -->
+  <path
+    d="M185 92
+       C205 78 226 72 256 72
+       C286 72 307 78 327 92
+       L382 112
+       C392 116 399 125 400 136
+       L404 186
+       C405 197 396 206 385 207
+       L336 202
+       L336 381
+       C336 397 323 410 307 410
+       L205 410
+       C189 410 176 397 176 381
+       L176 202
+       L127 207
+       C116 206 107 197 108 186
+       L112 136
+       C113 125 120 116 130 112
+       Z"
+    fill="currentColor"
+    stroke="OUTLINE_TOKEN"
+    stroke-width="11"
+    stroke-linejoin="round"
+  />
+
+  <!-- Collar. Separate token (not a literal color) so it can be set to whatever contrasts the
+       kit color, instead of a fixed white that vanishes on a white jersey. -->
+  <path
+    d="M218 84
+       C226 105 239 116 256 116
+       C273 116 286 105 294 84"
+    fill="none"
+    stroke="COLLAR_TOKEN"
+    stroke-width="8"
+    stroke-linecap="round"
+  />
+</svg>
