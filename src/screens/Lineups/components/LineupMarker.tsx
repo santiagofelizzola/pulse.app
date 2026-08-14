@@ -17,6 +17,8 @@ interface LineupMarkerProps {
   // Name-caption color, supplied by the lineup's pitch style — a dark caption is unreadable on a
   // dark pitch surface. Defaults to the original dark text for the white pitch.
   captionColor?: string
+  // Halo behind that caption, also from the pitch style — opposite tone to captionColor.
+  captionGlowColor?: string
   onMove: (id: string, x: number, y: number) => void
   onPress: (id: string) => void
 }
@@ -46,6 +48,7 @@ export function LineupMarker({
   showRole,
   color,
   captionColor,
+  captionGlowColor,
   onMove,
   onPress,
 }: LineupMarkerProps) {
@@ -116,7 +119,16 @@ export function LineupMarker({
             {showRole ? position.role ?? '' : ''}
           </Text>
         </Animated.View>
-        <Text style={[styles.label, { color: captionColor ?? colors.textPrimary }]} numberOfLines={1}>
+        <Text
+          style={[
+            styles.label,
+            {
+              color: captionColor ?? colors.textPrimary,
+              textShadowColor: captionGlowColor ?? canvas.pitch.glowLight,
+            },
+          ]}
+          numberOfLines={1}
+        >
           {position.label}
         </Text>
       </Animated.View>
@@ -146,6 +158,10 @@ const styles = StyleSheet.create({
   label: {
     ...typography.caption,
     fontFamily: fonts.semibold,
+    // Zero offset + a soft blur = a halo around the glyphs rather than a directional drop shadow.
+    // Only the color varies per pitch style (set inline above).
+    textShadowOffset: canvas.marker.captionGlow.offset,
+    textShadowRadius: canvas.marker.captionGlow.radius,
     marginTop: spacing.xxs,
     textAlign: 'center',
   },

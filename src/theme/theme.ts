@@ -92,7 +92,8 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  marker: { diameter: 30, border: 2 },
+  // captionGlow is a glow, not a directional shadow: zero offset, small blur.
+  marker: { diameter: 30, border: 2, captionGlow: { radius: 5, offset: { width: 0, height: 0 } } },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
   // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the
@@ -102,6 +103,11 @@ export const canvas = {
     ink: '#16181A',
     turfDark: '#357007',
     turfLight: '#4F980C',
+    // Caption glow: a soft halo behind the player-name text, always the opposite tone to the
+    // caption itself, so the letters separate from whatever they sit on (mowing stripes, a
+    // marking line). Kept low-alpha — separation, not a drop shadow.
+    glowLight: 'rgba(255, 255, 255, 0.80)',
+    glowDark: 'rgba(22, 24, 26, 0.65)',
     // Mowing bands drawn across the pitch height. Odd, so the top and bottom bands share a shade
     // (symmetric) and one band sits centered on the halfway line.
     bandCount: 11,

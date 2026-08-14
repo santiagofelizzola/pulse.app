@@ -14,6 +14,9 @@ export interface PitchStyleValue {
   // Color for text sitting directly on the surface rather than inside a marker — the player-name
   // captions. Part of the style because a dark caption vanishes on a dark surface.
   captionColor: string
+  // Halo behind that caption text, always the opposite tone to captionColor — it's what keeps the
+  // letters legible over mowing stripes or a marking line they happen to overlap.
+  captionGlowColor: string
   // Stripe count override; falls back to the shared canvas.pitch.bandCount.
   bandCount?: number
 }
@@ -24,12 +27,14 @@ export const PITCH_STYLES: Record<PitchStyle, PitchStyleValue> = {
     striped: false,
     lineColor: canvas.pitch.ink,
     captionColor: canvas.pitch.ink,
+    captionGlowColor: canvas.pitch.glowLight,
   },
   'green-striped': {
     bands: [canvas.pitch.turfDark, canvas.pitch.turfLight],
     striped: true,
     lineColor: canvas.pitch.white,
     captionColor: canvas.pitch.white,
+    captionGlowColor: canvas.pitch.glowDark,
   },
 }
 

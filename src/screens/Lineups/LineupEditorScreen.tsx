@@ -306,6 +306,7 @@ export default function LineupEditorScreen() {
                       showRole={showRoleLabels}
                       color={isKeeperPosition(position) ? keeperColor : teamColor}
                       captionColor={PITCH_STYLES[pitchStyle].captionColor}
+                      captionGlowColor={PITCH_STYLES[pitchStyle].captionGlowColor}
                       onMove={handleMove}
                       onPress={handleMarkerPress}
                     />
