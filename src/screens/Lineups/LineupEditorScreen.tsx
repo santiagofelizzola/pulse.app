@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import { Alert, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { Canvas } from '@shopify/react-native-skia'
 import { randomUUID } from 'expo-crypto'
-import { LayoutGrid, Palette, Save, X } from 'lucide-react-native'
+import { LayoutGrid, Palette, Save, Share2, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { getPitchAspectRatio, PitchBackground } from '../Canvas/components/PitchBackground'
+import { ExportSheet } from '../../components/ui/ExportSheet'
+import { useShareExport } from '../../export/useShareExport'
+import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
 import type { RootStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
-import { carryOverPlayers, getFormationSlots, isKeeperPosition } from '../../utils/formationSlots'
-import { DEFAULT_LABEL_DISPLAY, getMarkerText } from '../../utils/labelDisplay'
+import { carryOverPlayers, getFormationSlots } from '../../utils/formationSlots'
+import { DEFAULT_LABEL_DISPLAY } from '../../utils/labelDisplay'
 import { DEFAULT_MARKER_STYLE } from '../../utils/markerStyles'
-import { DEFAULT_PITCH_STYLE, PITCH_STYLES } from '../../utils/pitchStyles'
+import { DEFAULT_PITCH_STYLE } from '../../utils/pitchStyles'
 import { assignShirtNumbers } from '../../utils/shirtNumbers'
+import { exportLineup } from '../../utils/exportUtils'
 import type {
   CreateLineupInput,
   Formation,
@@ -27,7 +29,7 @@ import type {
 } from '../../types'
 import { FormationPicker } from './components/FormationPicker'
 import { LineupAppearanceSheet } from './components/LineupAppearanceSheet'
-import { LineupMarker } from './components/LineupMarker'
+import { LineupPitch } from './components/LineupPitch'
 import { LineupSaveSheet } from './components/LineupSaveSheet'
 import { PositionEditSheet } from './components/PositionEditSheet'
 import { SquadSizePicker } from './components/SquadSizePicker'
@@ -63,6 +65,10 @@ export default function LineupEditorScreen() {
   const [subSheetOpen, setSubSheetOpen] = useState(false)
   const [editingSub, setEditingSub] = useState<SubEntry | null>(null)
   const [saveSheetOpen, setSaveSheetOpen] = useState(false)
+  const [exportSheetOpen, setExportSheetOpen] = useState(false)
+  // Only used when the lineup has no name of its own yet — exporting never writes to the library.
+  const [exportName, setExportName] = useState('')
+  const { busy: exporting, share } = useShareExport()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [areaSize, setAreaSize] = useState({ width: 0, height: 0 })
@@ -116,7 +122,6 @@ export default function LineupEditorScreen() {
     canvasHeight = availableHeight
     canvasWidth = canvasHeight * aspectRatio
   }
-  const canvasSize = { width: canvasWidth, height: canvasHeight }
 
   const handleSelectSquadSize = useCallback((size: SquadSize) => {
     setSquadSize(size)
@@ -271,6 +276,45 @@ export default function LineupEditorScreen() {
     [squadSize, formation, positions, labelDisplay, subs, teamColor, keeperColor, pitchStyle, markerStyle, lineupId, navigation]
   )
 
+  const handleShare = useCallback(() => {
+    if (!squadSize) return
+    // Reads live editor state, so an in-progress lineup exports exactly like a saved one —
+    // LineupEditorScreen is the only lineup surface, and it holds all of this whether or not
+    // lineupId exists.
+    return share(
+      () => setExportSheetOpen(false),
+      () =>
+        exportLineup(
+          {
+            name: name.trim() || exportName.trim(),
+            squadSize,
+            formation: formation ?? undefined,
+            positions,
+            labelDisplay,
+            markerStyle,
+            pitchStyle,
+            teamColor,
+            keeperColor,
+            subs,
+          },
+          { detail: 'simple' }
+        )
+    )
+  }, [
+    share,
+    name,
+    exportName,
+    squadSize,
+    formation,
+    positions,
+    labelDisplay,
+    markerStyle,
+    pitchStyle,
+    teamColor,
+    keeperColor,
+    subs,
+  ])
+
   const isPitchEmpty = positions.length === 0
 
   return (
@@ -299,6 +343,14 @@ export default function LineupEditorScreen() {
                 <Palette size={22} color={colors.textPrimary} />
               </Pressable>
               <Pressable
+                onPress={() => setExportSheetOpen(true)}
+                disabled={isPitchEmpty}
+                hitSlop={layout.hitSlop}
+                style={styles.topBarButton}
+              >
+                <Share2 size={22} color={isPitchEmpty ? colors.textDisabled : colors.textPrimary} />
+              </Pressable>
+              <Pressable
                 onPress={() => setSaveSheetOpen(true)}
                 disabled={isPitchEmpty}
                 hitSlop={layout.hitSlop}
@@ -318,30 +370,18 @@ export default function LineupEditorScreen() {
           {canvasWidth > 0 && canvasHeight > 0 ? (
             <View style={{ width: canvasWidth, height: canvasHeight }}>
               <View style={[styles.canvasBox, StyleSheet.absoluteFill]}>
-                <Canvas style={StyleSheet.absoluteFill}>
-                  <PitchBackground
-                    background="full-pitch"
-                    width={canvasWidth}
-                    height={canvasHeight}
-                    style={PITCH_STYLES[pitchStyle]}
-                  />
-                </Canvas>
-                <View style={StyleSheet.absoluteFill}>
-                  {positions.map((position) => (
-                    <LineupMarker
-                      key={position.id}
-                      position={position}
-                      canvasSize={canvasSize}
-                      text={getMarkerText(position, labelDisplay)}
-                      markerStyle={markerStyle}
-                      color={isKeeperPosition(position) ? keeperColor : teamColor}
-                      captionColor={PITCH_STYLES[pitchStyle].captionColor}
-                      captionGlowColor={PITCH_STYLES[pitchStyle].captionGlowColor}
-                      onMove={handleMove}
-                      onPress={handleMarkerPress}
-                    />
-                  ))}
-                </View>
+                <LineupPitch
+                  positions={positions}
+                  labelDisplay={labelDisplay}
+                  markerStyle={markerStyle}
+                  pitchStyle={pitchStyle}
+                  teamColor={teamColor}
+                  keeperColor={keeperColor}
+                  width={canvasWidth}
+                  height={canvasHeight}
+                  onMove={handleMove}
+                  onPress={handleMarkerPress}
+                />
               </View>
             </View>
           ) : null}
@@ -405,6 +445,25 @@ export default function LineupEditorScreen() {
         onClose={() => setSubSheetOpen(false)}
         onSave={handleSaveSub}
         onRemove={handleRemoveSub}
+      />
+
+      <ExportSheet
+        visible={exportSheetOpen}
+        detail="simple"
+        detailOptions={[]}
+        // No Simple/Full choice: the export is the pitch exactly as arranged. See ExportSheet.
+        detailMatters={false}
+        nameField={
+          name.trim()
+            ? undefined
+            : { value: exportName, placeholder: 'e.g. Saturday starters', onChange: setExportName }
+        }
+        hint="A PNG image of the pitch, exactly as arranged. This won't save the lineup."
+        busy={exporting}
+        error={null}
+        onChangeDetail={() => {}}
+        onShare={handleShare}
+        onClose={() => setExportSheetOpen(false)}
       />
 
       <LineupSaveSheet

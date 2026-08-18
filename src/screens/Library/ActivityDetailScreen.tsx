@@ -11,17 +11,10 @@ import { activityRepository } from '../../db/repositories/activityRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { activityTagLabel } from '../../utils/activityTags'
-import { exportActivity, exportErrorMessage, isSharingUnavailable, type ExportDetail } from '../../utils/exportUtils'
+import { useShareExport } from '../../export/useShareExport'
+import { exportActivity } from '../../utils/exportUtils'
 import type { Activity, ActivityTag } from '../../types'
 import { ActivityEditSheet } from './components/ActivityEditSheet'
-
-// Time to let one Modal finish dismissing before another is presented — see handleShare.
-const MODAL_DISMISS_MS = 300
-
-const EXPORT_DETAIL_OPTIONS: Array<{ value: ExportDetail; label: string }> = [
-  { value: 'simple', label: 'Simple' },
-  { value: 'full', label: 'Full' },
-]
 
 type Route = RouteProp<LibraryStackParamList, 'ActivityDetail'>
 
@@ -36,8 +29,7 @@ export default function ActivityDetailScreen() {
   // placeholder instead of leaving a broken image.
   const [imageFailed, setImageFailed] = useState(false)
   const [exportSheetOpen, setExportSheetOpen] = useState(false)
-  const [exportDetail, setExportDetail] = useState<ExportDetail>('simple')
-  const [exporting, setExporting] = useState(false)
+  const { busy: exporting, share } = useShareExport()
 
   useFocusEffect(
     useCallback(() => {
@@ -89,32 +81,13 @@ export default function ActivityDetailScreen() {
     [activity]
   )
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(() => {
     if (!activity) return
-
-    // Close this sheet BEFORE the export starts. ExportSheet is a Modal and the export host is
-    // another one; presenting a second modal over a live one is where iOS quietly refuses, which
-    // would leave the host mounted but never laid out and the export hanging. Failures surface
-    // as an Alert instead of inline sheet text for the same reason.
-    setExportSheetOpen(false)
-    setExporting(true)
-    await new Promise((resolve) => setTimeout(resolve, MODAL_DISMISS_MS))
-
-    try {
-      await exportActivity(activity, { detail: exportDetail })
-      // Deliberately no success message: the share sheet resolving tells us nothing about
-      // whether the coach actually sent anything (see export/share.ts).
-    } catch (error) {
-      // exportErrorMessage names the stage that failed (rendering / saving / sharing), so a
-      // report is actionable instead of "something went wrong"; the full error is logged.
-      const message = isSharingUnavailable(error)
-        ? "Sharing isn't available on this device."
-        : exportErrorMessage(error)
-      Alert.alert('Could not export', message)
-    } finally {
-      setExporting(false)
-    }
-  }, [activity, exportDetail])
+    return share(
+      () => setExportSheetOpen(false),
+      () => exportActivity(activity, { detail: 'simple' })
+    )
+  }, [activity, share])
 
   if (!activity) {
     return <SafeAreaView style={styles.safeArea} />
@@ -201,12 +174,14 @@ export default function ActivityDetailScreen() {
 
       <ExportSheet
         visible={exportSheetOpen}
-        detail={exportDetail}
-        detailOptions={EXPORT_DETAIL_OPTIONS}
-        hint="A PNG image, ready to send."
+        detail="simple"
+        detailOptions={[]}
+        // No Simple/Full choice: the export is the diagram exactly as drawn. See ExportSheet.
+        detailMatters={false}
+        hint="A PNG image of the diagram, exactly as drawn."
         busy={exporting}
         error={null}
-        onChangeDetail={setExportDetail}
+        onChangeDetail={() => {}}
         onShare={handleShare}
         onClose={() => setExportSheetOpen(false)}
       />

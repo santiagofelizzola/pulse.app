@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigation } from '@react-navigation/native'
 import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import { GestureDetector } from 'react-native-gesture-handler'
-import { LayoutGrid, Redo2, Save, Undo2, X } from 'lucide-react-native'
+import { LayoutGrid, Redo2, Save, Share2, Undo2, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { ExportSheet } from '../../components/ui/ExportSheet'
+import { useShareExport } from '../../export/useShareExport'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import { useCanvasStore } from '../../store/canvasStore'
 import { colors, layout, spacing, typography } from '../../theme/theme'
+import { exportActivity } from '../../utils/exportUtils'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
 import type { PlaceableToolType, ShapeToolType } from '../../store/canvasStore'
 import type { ActivityTag, CanvasBackground, CanvasData } from '../../types'
@@ -67,6 +70,11 @@ export default function CanvasScreen() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [saveSheetOpen, setSaveSheetOpen] = useState(false)
+  const [exportSheetOpen, setExportSheetOpen] = useState(false)
+  // Kept apart from whatever the coach later types in SaveSheet: exporting must not have library
+  // side effects, so a name entered here names the file and nothing else.
+  const [exportName, setExportName] = useState('')
+  const { busy: exporting, share } = useShareExport()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const canvasBoxRef = useRef<View>(null)
@@ -198,6 +206,20 @@ export default function CanvasScreen() {
     [deselectAll, canvasData, markSaved, navigation]
   )
 
+  const handleShare = useCallback(
+    () =>
+      share(
+        () => setExportSheetOpen(false),
+        // Exports what is ON the canvas right now, straight from canvasData — this drill has no
+        // library record and deliberately does not get one. Because the artifact RE-RENDERS from
+        // that data rather than screenshotting the live canvas, selection handles, an armed tool
+        // and any in-progress gesture are all absent for free (unlike captureCanvasThumbnail,
+        // which has to deselect and wait a frame first).
+        () => exportActivity({ name: exportName.trim(), canvasData }, { detail: 'simple' })
+      ),
+    [share, exportName, canvasData]
+  )
+
   // Cone, Disc, and PlayerMarker are the PlacedObject types carrying a `color` field — gate the
   // toolbar's color action to them (see design.md §7's "Per-object color (cone & disc)",
   // extended to player markers).
@@ -236,6 +258,14 @@ export default function CanvasScreen() {
           </Pressable>
           <Pressable onPress={redo} disabled={!canRedo} hitSlop={layout.hitSlop} style={styles.topBarButton}>
             <Redo2 size={22} color={canRedo ? colors.textPrimary : colors.textDisabled} />
+          </Pressable>
+          <Pressable
+            onPress={() => setExportSheetOpen(true)}
+            disabled={isCanvasEmpty}
+            hitSlop={layout.hitSlop}
+            style={styles.topBarButton}
+          >
+            <Share2 size={22} color={isCanvasEmpty ? colors.textDisabled : colors.textPrimary} />
           </Pressable>
           <Pressable
             onPress={() => setSaveSheetOpen(true)}
@@ -304,6 +334,22 @@ export default function CanvasScreen() {
         selectedColor={colorableSelected?.color}
         onSelect={handleSelectColor}
         onClose={() => setColorPickerOpen(false)}
+      />
+
+      <ExportSheet
+        visible={exportSheetOpen}
+        detail="simple"
+        detailOptions={[]}
+        // The export is the diagram exactly as drawn — no metadata block, so no choice to
+        // offer. See ExportSheet's detailMatters.
+        detailMatters={false}
+        nameField={{ value: exportName, placeholder: 'e.g. Rondo 4v2', onChange: setExportName }}
+        hint="A PNG image of the diagram, exactly as drawn. This won't save it to your library."
+        busy={exporting}
+        error={null}
+        onChangeDetail={() => {}}
+        onShare={handleShare}
+        onClose={() => setExportSheetOpen(false)}
       />
 
       <SaveSheet

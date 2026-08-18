@@ -22,8 +22,10 @@ interface LineupMarkerProps {
   captionColor?: string
   // Halo behind that caption, also from the pitch style — opposite tone to captionColor.
   captionGlowColor?: string
-  onMove: (id: string, x: number, y: number) => void
-  onPress: (id: string) => void
+  // Both omitted renders a STATIC marker with no gesture recognizers attached — the export
+  // path, which needs the marker to look identical but must never be draggable.
+  onMove?: (id: string, x: number, y: number) => void
+  onPress?: (id: string) => void
 }
 
 const CONTAINER_WIDTH = 72
@@ -60,11 +62,13 @@ export function LineupMarker({
   const baseX = position.x * canvasSize.width
   const baseY = position.y * canvasSize.height
 
+  const interactive = onMove !== undefined && onPress !== undefined
+
   const tap = Gesture.Tap()
     .maxDistance(TAP_MAX_DISTANCE)
     .hitSlop(layout.hitSlop)
     .onEnd(() => {
-      runOnJS(onPress)(position.id)
+      if (onPress) runOnJS(onPress)(position.id)
     })
 
   const pan = Gesture.Pan()
@@ -85,7 +89,7 @@ export function LineupMarker({
         // one frame — a snap-back-then-jump flicker. Left at its live drag offset, the marker
         // stays visually put at the same on-screen spot until the effect below hands off to the
         // committed position once baseX/baseY actually catch up.
-        runOnJS(onMove)(position.id, nextX, nextY)
+        if (onMove) runOnJS(onMove)(position.id, nextX, nextY)
       }
     })
     .onFinalize((_event, success) => {
@@ -118,25 +122,27 @@ export function LineupMarker({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
   }))
 
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.container, style]}>
-        <MarkerVisual markerStyle={markerStyle} color={color} text={text} />
-        <Text
-          style={[
-            styles.label,
-            {
-              color: captionColor ?? colors.textPrimary,
-              textShadowColor: captionGlowColor ?? canvas.pitch.glowLight,
-            },
-          ]}
-          numberOfLines={1}
-        >
-          {position.label}
-        </Text>
-      </Animated.View>
-    </GestureDetector>
+  const marker = (
+    <Animated.View style={[styles.container, style]}>
+      <MarkerVisual markerStyle={markerStyle} color={color} text={text} />
+      <Text
+        style={[
+          styles.label,
+          {
+            color: captionColor ?? colors.textPrimary,
+            textShadowColor: captionGlowColor ?? canvas.pitch.glowLight,
+          },
+        ]}
+        numberOfLines={1}
+      >
+        {position.label}
+      </Text>
+    </Animated.View>
   )
+
+  // The static case returns the very same view, minus the recognizers — so an exported marker
+  // cannot drift from the one the coach positioned.
+  return interactive ? <GestureDetector gesture={gesture}>{marker}</GestureDetector> : marker
 }
 
 const styles = StyleSheet.create({

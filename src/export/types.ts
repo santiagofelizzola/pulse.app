@@ -1,4 +1,35 @@
-import type { Activity, BlockType, Lineup, Session } from '../types'
+import type { Activity, BlockType, LabelDisplay, Lineup, LineupPosition, MarkerStyle, PitchStyle, Session, SquadSize, SubEntry, Formation } from '../types'
+
+// What ActivityArtifact actually needs to draw a drill — never the persisted record.
+//
+// A drill on the canvas has been drawn but not saved: no id, no timestamps, no thumbnail, and a
+// name only if the coach types one at export time. Narrowing to the presentational fields makes
+// the saved and unsaved cases the SAME code path instead of forcing the canvas to fabricate an
+// Activity. `name` may be empty, in which case the artifact renders without a title block.
+export interface ActivityArtifactInput {
+  name: string
+  canvasData: Activity['canvasData']
+  tag?: Activity['tag']
+  durationMinutes?: number
+  notes?: string
+  playerCount?: number
+  playerActions?: string
+}
+
+// Same narrowing for a lineup. LineupEditorScreen holds every one of these in state whether or
+// not the lineup has ever been saved, so exporting an in-progress lineup needs no special case.
+export interface LineupArtifactInput {
+  name: string
+  squadSize: SquadSize
+  formation?: Formation
+  positions: LineupPosition[]
+  labelDisplay?: LabelDisplay
+  markerStyle?: MarkerStyle
+  pitchStyle?: PitchStyle
+  teamColor?: string
+  keeperColor?: string
+  subs?: SubEntry[]
+}
 
 // How much of a subject's metadata the artifact carries. 'simple' is the diagram plus a name —
 // the version a coach drops into a team chat; 'full' adds every populated field.

@@ -7,9 +7,14 @@ import type { CaptureResult } from './capture'
 // is. Phase 2's lineup and phase 3's session pages are new callers of renderAndCapture, not new
 // branches inside the host.
 export interface RenderSpec {
-  // Laid-out height in points for a candidate width. Used to fit the artifact inside the screen
-  // before rendering, because a capture target taller than the screen is the blank-image failure
-  // mode described in capture.ts.
+  // Laid-out height in points for a candidate width. Artifacts are a fixed 9:16, so this is
+  // simply width * ARTIFACT_ASPECT — the host uses it to pick a width whose height still fits
+  // the screen, since a capture target taller than the screen is the blank-image failure mode
+  // described in capture.ts.
+  //
+  // Templates absorb a tight frame by shrinking their DIAGRAM, never the artifact: narrowing the
+  // artifact would trade away pixel width and text legibility to buy pitch height, which is
+  // backwards.
   measure: (width: number) => number
   render: (width: number) => ReactNode
   format?: 'png' | 'jpg'
