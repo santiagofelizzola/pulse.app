@@ -95,7 +95,11 @@ export interface CommittedSnapshot {
   arrows: Record<string, CommittedArrow>
 }
 
-const EMPTY_SNAPSHOT: CommittedSnapshot = { objects: {}, arrows: {} }
+// Exported so a non-interactive renderer (the export templates' CanvasDiagram) can hand
+// CanvasObject/ArrowPath/PlayerMarkerOverlay inert shared values and get a purely static
+// render out of the exact same components the editor uses — an empty snapshot makes each of
+// them fall back to its `object`/`arrow` prop, which is already the first-mount path.
+export const EMPTY_SNAPSHOT: CommittedSnapshot = { objects: {}, arrows: {} }
 
 // Normalized (0..1) coordinates, same units as the store — consumers multiply by canvasSize
 // from their own closure, which is stable for a gesture's duration and never races a commit.
@@ -125,7 +129,9 @@ function buildSnapshot(objects: PlacedObject[], arrows: Arrow[]): CommittedSnaps
   return { objects: objectMap, arrows: arrowMap }
 }
 
-const IDLE_STATE: InteractionState = {
+// Exported alongside EMPTY_SNAPSHOT above, for the same reason: `mode: 'idle'` + a null
+// targetId is exactly "no gesture in flight", which is what a static export render needs.
+export const IDLE_STATE: InteractionState = {
   mode: 'idle',
   targetId: null,
   targetKind: null,

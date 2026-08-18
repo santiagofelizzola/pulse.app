@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { Pencil, Trash2 } from 'lucide-react-native'
+import { Pencil, Share2, Trash2 } from 'lucide-react-native'
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
 
+import { ExportSheet } from '../../components/ui/ExportSheet'
 import { ScreenHeader } from '../../components/ui/ScreenHeader'
 import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { activityTagLabel } from '../../utils/activityTags'
+import { exportActivity, exportErrorMessage, isSharingUnavailable, type ExportDetail } from '../../utils/exportUtils'
 import type { Activity, ActivityTag } from '../../types'
 import { ActivityEditSheet } from './components/ActivityEditSheet'
+
+// Time to let one Modal finish dismissing before another is presented — see handleShare.
+const MODAL_DISMISS_MS = 300
+
+const EXPORT_DETAIL_OPTIONS: Array<{ value: ExportDetail; label: string }> = [
+  { value: 'simple', label: 'Simple' },
+  { value: 'full', label: 'Full' },
+]
 
 type Route = RouteProp<LibraryStackParamList, 'ActivityDetail'>
 
@@ -25,6 +35,9 @@ export default function ActivityDetailScreen() {
   // A stored thumbnail_uri doesn't guarantee the file is still reachable — fall back to the
   // placeholder instead of leaving a broken image.
   const [imageFailed, setImageFailed] = useState(false)
+  const [exportSheetOpen, setExportSheetOpen] = useState(false)
+  const [exportDetail, setExportDetail] = useState<ExportDetail>('simple')
+  const [exporting, setExporting] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +89,33 @@ export default function ActivityDetailScreen() {
     [activity]
   )
 
+  const handleShare = useCallback(async () => {
+    if (!activity) return
+
+    // Close this sheet BEFORE the export starts. ExportSheet is a Modal and the export host is
+    // another one; presenting a second modal over a live one is where iOS quietly refuses, which
+    // would leave the host mounted but never laid out and the export hanging. Failures surface
+    // as an Alert instead of inline sheet text for the same reason.
+    setExportSheetOpen(false)
+    setExporting(true)
+    await new Promise((resolve) => setTimeout(resolve, MODAL_DISMISS_MS))
+
+    try {
+      await exportActivity(activity, { detail: exportDetail })
+      // Deliberately no success message: the share sheet resolving tells us nothing about
+      // whether the coach actually sent anything (see export/share.ts).
+    } catch (error) {
+      // exportErrorMessage names the stage that failed (rendering / saving / sharing), so a
+      // report is actionable instead of "something went wrong"; the full error is logged.
+      const message = isSharingUnavailable(error)
+        ? "Sharing isn't available on this device."
+        : exportErrorMessage(error)
+      Alert.alert('Could not export', message)
+    } finally {
+      setExporting(false)
+    }
+  }, [activity, exportDetail])
+
   if (!activity) {
     return <SafeAreaView style={styles.safeArea} />
   }
@@ -92,6 +132,13 @@ export default function ActivityDetailScreen() {
         onBack={() => navigation.goBack()}
         trailing={
           <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => setExportSheetOpen(true)}
+              hitSlop={layout.hitSlop}
+              style={styles.headerActionButton}
+            >
+              <Share2 size={20} color={colors.textPrimary} />
+            </Pressable>
             <Pressable
               onPress={() => setEditSheetOpen(true)}
               hitSlop={layout.hitSlop}
@@ -150,6 +197,18 @@ export default function ActivityDetailScreen() {
         error={saveError}
         onClose={() => setEditSheetOpen(false)}
         onSave={handleSaveEdit}
+      />
+
+      <ExportSheet
+        visible={exportSheetOpen}
+        detail={exportDetail}
+        detailOptions={EXPORT_DETAIL_OPTIONS}
+        hint="A PNG image, ready to send."
+        busy={exporting}
+        error={null}
+        onChangeDetail={setExportDetail}
+        onShare={handleShare}
+        onClose={() => setExportSheetOpen(false)}
       />
     </SafeAreaView>
   )

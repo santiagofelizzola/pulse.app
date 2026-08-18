@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigation } from '@react-navigation/native'
 import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import { GestureDetector } from 'react-native-gesture-handler'
-import { Canvas } from '@shopify/react-native-skia'
 import { LayoutGrid, Redo2, Save, Undo2, X } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -11,22 +10,18 @@ import { useCanvasStore } from '../../store/canvasStore'
 import { colors, layout, spacing, typography } from '../../theme/theme'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
 import type { PlaceableToolType, ShapeToolType } from '../../store/canvasStore'
-import type { ActivityTag, CanvasBackground, CanvasData, PlacedObject, PlayerMarker } from '../../types'
-import { ArrowDrawPreview, ArrowPath } from './components/ArrowPath'
+import type { ActivityTag, CanvasBackground, CanvasData } from '../../types'
+import { ArrowDrawPreview } from './components/ArrowPath'
 import { BackgroundPicker } from './components/BackgroundPicker'
-import { CanvasObject, ShapePlacePreview } from './components/CanvasObject'
+import { CanvasDiagram } from './components/CanvasDiagram'
+import { ShapePlacePreview } from './components/CanvasObject'
 import { ColorPicker } from './components/ColorPicker'
-import { getPitchAspectRatio, PitchBackground } from './components/PitchBackground'
-import { PlayerMarkerOverlay } from './components/PlayerMarkerOverlay'
+import { getPitchAspectRatio } from './components/PitchBackground'
 import { SaveSheet } from './components/SaveSheet'
 import { SelectionOverlay } from './components/SelectionOverlay'
 import { ToolPalette } from './components/ToolPalette'
 import { useCanvasGestures } from './hooks/useCanvasGestures'
 import { useCanvasState } from './hooks/useCanvasState'
-
-function isPlayerMarker(object: PlacedObject): object is PlayerMarker {
-  return object.type === 'player'
-}
 
 // Breathing room around the pitch within its flex:1 area, so it never touches the top-bar/tool-tray edges.
 const CANVAS_MARGIN = spacing.lg
@@ -124,6 +119,13 @@ export default function CanvasScreen() {
 
   const canvasSize = { width: canvasWidth, height: canvasHeight }
 
+  // The same value the diagram renders from and the one persisted on save, so what a coach sees
+  // and what lands in the library can't diverge.
+  const canvasData: CanvasData = useMemo(
+    () => ({ version: 1, background, objects, arrows }),
+    [background, objects, arrows]
+  )
+
   const handlePlace = useCallback(
     (toolType: PlaceableToolType, x: number, y: number) => {
       place(toolType, x, y, canvasSize)
@@ -182,7 +184,6 @@ export default function CanvasScreen() {
         await waitForNextFrame()
 
         const thumbnailUri = await captureCanvasThumbnail(canvasBoxRef)
-        const canvasData: CanvasData = { version: 1, background, objects, arrows }
         await activityRepository.create({ name, tag, playerCount, playerActions, canvasData, thumbnailUri })
 
         markSaved()
@@ -194,7 +195,7 @@ export default function CanvasScreen() {
         setSaving(false)
       }
     },
-    [deselectAll, background, objects, arrows, markSaved, navigation]
+    [deselectAll, canvasData, markSaved, navigation]
   )
 
   // Cone, Disc, and PlayerMarker are the PlacedObject types carrying a `color` field — gate the
@@ -214,27 +215,7 @@ export default function CanvasScreen() {
     [colorableSelected, setObjectColor]
   )
 
-  const playerObjects = objects.filter(isPlayerMarker)
-  const otherObjects = objects.filter((object): object is Exclude<PlacedObject, PlayerMarker> => !isPlayerMarker(object))
   const isCanvasEmpty = objects.length === 0 && arrows.length === 0
-
-  // Arrows and equipment paint in one shared stacking order (design.md's "Layering" intent) so
-  // bring-to-front on a line can actually rise above equipment, not just reorder among lines.
-  // Player markers are excluded — they always render via the RN overlay below, on top of
-  // everything in the Skia canvas regardless of zIndex, which is an unrelated, pre-existing
-  // constraint of how their text labels are drawn.
-  const paintOrder = useMemo(() => {
-    const items: Array<{ kind: 'arrow'; arrow: (typeof arrows)[number] } | { kind: 'object'; object: (typeof otherObjects)[number] }> = [
-      ...arrows.map((arrow) => ({ kind: 'arrow' as const, arrow })),
-      ...otherObjects.map((object) => ({ kind: 'object' as const, object })),
-    ]
-    return items.sort((a, b) => {
-      const za = a.kind === 'arrow' ? a.arrow.zIndex : a.object.zIndex
-      const zb = b.kind === 'arrow' ? b.arrow.zIndex : b.object.zIndex
-      return za - zb
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrows, otherObjects])
 
   return (
     <View style={styles.container}>
@@ -272,44 +253,22 @@ export default function CanvasScreen() {
           <View style={{ width: canvasWidth, height: canvasHeight }}>
             <GestureDetector gesture={pan}>
               <View ref={canvasBoxRef} style={[styles.canvasBox, StyleSheet.absoluteFill]}>
-                <Canvas style={StyleSheet.absoluteFill}>
-                  <PitchBackground background={background} width={canvasWidth} height={canvasHeight} />
-                  {paintOrder.map((item) =>
-                    item.kind === 'arrow' ? (
-                      <ArrowPath
-                        key={item.arrow.id}
-                        arrow={item.arrow}
-                        canvasSize={canvasSize}
-                        isSelected={selected?.kind === 'arrow' && selected.arrow.id === item.arrow.id}
-                        interaction={interaction}
-                        committed={committed}
-                      />
-                    ) : (
-                      <CanvasObject
-                        key={item.object.id}
-                        object={item.object}
-                        canvasSize={canvasSize}
-                        interaction={interaction}
-                        committed={committed}
-                      />
-                    )
-                  )}
-                  {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
-                  {tool.kind === 'place' && (tool.type === 'shape-rect' || tool.type === 'shape-circle') ? (
-                    <ShapePlacePreview type={tool.type} interaction={interaction} />
-                  ) : null}
-                </Canvas>
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                  {playerObjects.map((object) => (
-                    <PlayerMarkerOverlay
-                      key={object.id}
-                      object={object}
-                      canvasSize={canvasSize}
-                      interaction={interaction}
-                      committed={committed}
-                    />
-                  ))}
-                </View>
+                <CanvasDiagram
+                  canvasData={canvasData}
+                  width={canvasWidth}
+                  height={canvasHeight}
+                  interaction={interaction}
+                  committed={committed}
+                  selectedId={selected?.kind === 'arrow' ? selected.arrow.id : null}
+                  skiaOverlay={
+                    <>
+                      {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
+                      {tool.kind === 'place' && (tool.type === 'shape-rect' || tool.type === 'shape-circle') ? (
+                        <ShapePlacePreview type={tool.type} interaction={interaction} />
+                      ) : null}
+                    </>
+                  }
+                />
               </View>
             </GestureDetector>
             {/* SelectionOverlay is a SIBLING of the GestureDetector's view, not a descendant —
