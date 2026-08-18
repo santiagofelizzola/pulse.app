@@ -47,6 +47,11 @@ interface CaptureImageOptions {
   format?: 'png' | 'jpg'
   // Lossy formats only; ignored for png.
   quality?: number
+  // 'file' writes to the OS temp directory and returns its path — right for an artifact that is
+  // about to be shared. 'data-uri' returns the bytes inline, which is what a PDF page needs:
+  // expo-print renders HTML through WKWebView (iOS) and loadDataWithBaseURL (Android), and with a
+  // null base URL Android refuses file:// subresources outright. A data URI resolves on both.
+  encoding?: 'file' | 'data-uri'
 }
 
 /**
@@ -64,12 +69,12 @@ interface CaptureImageOptions {
  */
 export async function captureView(
   ref: RefObject<View | null>,
-  { layoutWidthPt, layoutHeightPt, format = 'png', quality = 1 }: CaptureImageOptions
+  { layoutWidthPt, layoutHeightPt, format = 'png', quality = 1, encoding = 'file' }: CaptureImageOptions
 ): Promise<CaptureResult> {
   const uri = await captureRef(ref, {
     format,
     quality,
-    result: 'tmpfile',
+    result: encoding === 'data-uri' ? 'data-uri' : 'tmpfile',
     // react-native-skia renders into a TextureView on Android, which ViewShot.java handles by
     // calling getBitmap() on it. Setting this covers the SurfaceView path too, so a future Skia
     // backing-view change can't silently turn every Android export's pitch blank.

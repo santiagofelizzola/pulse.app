@@ -26,6 +26,12 @@ const PAINT_SETTLE_MS = 120
 // the screen. Each pass scales by the exact overshoot ratio, so one is almost always enough.
 const MAX_FIT_PASSES = 3
 
+// A job that never reports a usable layout would otherwise leave the coach on a spinner forever
+// with no way out. The commonest cause is a template with no intrinsic size — every child
+// absolutely positioned, so the capture target measures zero height and the capture never fires.
+// Failing loudly turns that into a reportable error instead of a hang.
+const LAYOUT_TIMEOUT_MS = 8000
+
 function waitFrames(count: number): Promise<void> {
   return new Promise((resolve) => {
     let remaining = count
@@ -51,10 +57,16 @@ function delay(ms: number): Promise<void> {
  * only has to be approximately right — the real height is measured after layout below, and the
  * estimate never reaches the captured image.
  */
-function estimateFitWidth(measure: (width: number) => number, availableWidth: number, availableHeight: number): number {
-  // Starts at the width that yields the pixel ceiling on this device, capped by the screen —
-  // resolution comes from layout size here, not from a capture option (see targetLayoutWidth).
-  let width = targetLayoutWidth(availableWidth)
+function estimateFitWidth(
+  spec: { measure: (width: number) => number; fixedWidth?: number },
+  availableWidth: number,
+  availableHeight: number
+): number {
+  const { measure } = spec
+  // A spec with its own page geometry gets exactly that width; everything else starts at the
+  // width that yields the pixel ceiling on this device, capped by the screen — resolution comes
+  // from layout size here, not from a capture option (see targetLayoutWidth).
+  let width = Math.min(spec.fixedWidth ?? targetLayoutWidth(availableWidth), availableWidth)
   for (let pass = 0; pass < MAX_FIT_PASSES + 1; pass += 1) {
     const height = measure(width)
     if (height <= availableHeight) return width
@@ -97,33 +109,55 @@ export function ExportRenderHost() {
   // costs at most one extra fit pass rather than clipping content or padding the image with
   // dead white space.
   const [width, setWidth] = useState(0)
-  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null)
+  // The measurement is tagged with the job it belongs to. Without the tag, the capture effect
+  // re-runs the instant a new job arrives — still holding the previous job's height, because the
+  // reset below only applies on the next render — and fires a capture against a view that has not
+  // laid out yet.
+  const [measured, setMeasured] = useState<{ jobId: number; height: number } | null>(null)
   const fitPassRef = useRef(0)
 
+  const measuredHeight = job && measured?.jobId === job.id ? measured.height : null
+
+  // Keyed on the job alone. Including availableWidth/availableHeight here meant a late safe-area
+  // update — routine when a Modal presents — would blank measuredHeight after the artifact had
+  // already laid out, and if the recomputed width came out identical, no new layout event would
+  // ever arrive to replace it.
   useEffect(() => {
     if (!job) return
     fitPassRef.current = 0
-    setMeasuredHeight(null)
-    setWidth(estimateFitWidth(job.spec.measure, availableWidth, availableHeight))
-  }, [job, availableWidth, availableHeight])
+    setMeasured(null)
+    setWidth(estimateFitWidth(job.spec, availableWidth, availableHeight))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id])
 
+  // Watchdog: armed with each job, disarmed as soon as the artifact reports a usable height.
+  useEffect(() => {
+    if (!job || measuredHeight !== null) return
+    const timer = setTimeout(() => {
+      job.reject(new Error('The export never finished laying out. This is a bug in its template.'))
+      clear(job.id)
+    }, LAYOUT_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [job, measuredHeight, clear])
+
+  const jobId = job?.id
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const height = event.nativeEvent.layout.height
-      if (height <= 0) return
+      if (height <= 0 || jobId === undefined) return
 
       // Real height overshot the screen — shrink by the exact ratio and let it lay out again
       // rather than capturing a view that runs off the bottom.
       if (height > availableHeight && fitPassRef.current < MAX_FIT_PASSES) {
         fitPassRef.current += 1
-        setMeasuredHeight(null)
+        setMeasured(null)
         setWidth((current) => current * (availableHeight / height))
         return
       }
 
-      setMeasuredHeight(height)
+      setMeasured({ jobId, height })
     },
-    [availableHeight]
+    [availableHeight, jobId]
   )
 
   useEffect(() => {
@@ -141,6 +175,7 @@ export function ExportRenderHost() {
           layoutHeightPt: measuredHeight,
           format: job.spec.format,
           quality: job.spec.quality,
+          encoding: job.spec.encoding,
         })
         if (abandoned) return
         job.resolve(result)
@@ -163,7 +198,18 @@ export function ExportRenderHost() {
           // Width is fixed, height is left to content and then measured — see measuredHeight.
           // collapsable={false} is required: without it Android flattens this away and there is
           // no native view left to capture.
-          <View collapsable={false} ref={captureTargetRef} style={{ width }} onLayout={handleLayout}>
+          // key={job.id} is load-bearing. onLayout only fires when a view's layout CHANGES, and
+          // consecutive jobs are frequently identical in size — every session page is exactly
+          // 360x640 — so without a fresh mount per job the second page and everything after it
+          // would re-render at the same size, never report a layout, and hang until the
+          // watchdog fired.
+          <View
+            key={job.id}
+            collapsable={false}
+            ref={captureTargetRef}
+            style={{ width }}
+            onLayout={handleLayout}
+          >
             {job.spec.render(width)}
           </View>
         ) : null}

@@ -19,6 +19,12 @@ export interface RenderSpec {
   render: (width: number) => ReactNode
   format?: 'png' | 'jpg'
   quality?: number
+  encoding?: 'file' | 'data-uri'
+  // Forces a specific layout width instead of the host's "as wide as the pixel ceiling and the
+  // screen allow" default. Session pages are designed at a fixed 360pt page size, so rendering
+  // them at an arbitrary device width would leave a blank strip beside the page in the capture.
+  // Still clamped to the screen.
+  fixedWidth?: number
 }
 
 interface RenderJob {

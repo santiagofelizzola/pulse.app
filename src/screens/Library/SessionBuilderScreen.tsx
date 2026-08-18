@@ -1,14 +1,21 @@
 import { useCallback, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { ChevronLeft, Info } from 'lucide-react-native'
+import { ChevronLeft, Info, Share2 } from 'lucide-react-native'
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
+import { ExportSheet } from '../../components/ui/ExportSheet'
 import { HeaderActionButton } from '../../components/ui/ScreenHeader'
+import { useShareExport } from '../../export/useShareExport'
 import { sessionRepository } from '../../db/repositories/sessionRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
+import {
+  exportSession,
+  shouldWarnBeforeSessionExport,
+  type ExportDetail,
+} from '../../utils/exportUtils'
 import type { Activity, BlockType, Session, SessionActivity } from '../../types'
 import { ActivityPickerSheet } from './components/ActivityPickerSheet'
 import { BlockTypePicker } from './components/BlockTypePicker'
@@ -16,6 +23,13 @@ import { CoachingPointsEditor } from './components/CoachingPointsEditor'
 import { DurationEditor } from './components/DurationEditor'
 import { SessionBlockCard, SESSION_CARD_GAP } from './components/SessionBlockCard'
 import { SessionDetailsSheet } from './components/SessionDetailsSheet'
+
+// The one subject where two templates are genuinely two different documents rather than the same
+// artifact with more fields: an overview to scan, or a plan to coach from.
+const SESSION_EXPORT_DETAIL_OPTIONS: Array<{ value: ExportDetail; label: string }> = [
+  { value: 'simple', label: 'Overview' },
+  { value: 'full', label: 'Full plan' },
+]
 
 type Route = RouteProp<LibraryStackParamList, 'SessionBuilder'>
 
@@ -36,6 +50,9 @@ export default function SessionBuilderScreen() {
   const [coachingPointsTarget, setCoachingPointsTarget] = useState<SessionActivity | null>(null)
   const [durationTarget, setDurationTarget] = useState<SessionActivity | null>(null)
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false)
+  const [exportSheetOpen, setExportSheetOpen] = useState(false)
+  const [exportDetail, setExportDetail] = useState<ExportDetail>('full')
+  const { busy: exporting, share } = useShareExport()
 
   const activeIndex = useSharedValue(-1)
   const dragY = useSharedValue(0)
@@ -171,6 +188,44 @@ export default function SessionBuilderScreen() {
 
   const totalDuration = session?.totalDurationMinutes ?? 0
 
+  // Composed from LIVE screen state rather than the last-loaded row: name, focus and block order
+  // are edited locally and persisted asynchronously, so the record can lag by a beat. The export
+  // should be the session the coach is looking at.
+  const sessionForExport: Session | null = session
+    ? {
+        ...session,
+        name: name.trim() || 'Untitled session',
+        focus: focus.trim() || undefined,
+        playerCount: sessionPlayerCount,
+        coachingMoments: coachingMoments.trim() || undefined,
+        activities: blocks,
+      }
+    : null
+
+  function handleShare() {
+    if (!sessionForExport) return
+    const run = () =>
+      share(
+        () => setExportSheetOpen(false),
+        () => exportSession(sessionForExport, { detail: exportDetail })
+      )
+
+    // Every activity costs a full-size capture, so a very long session is slow enough to be
+    // worth confirming rather than appearing to hang.
+    if (shouldWarnBeforeSessionExport(sessionForExport)) {
+      Alert.alert(
+        'Long session',
+        `This session has ${blocks.length} activities and will take a moment to render.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Export', onPress: () => void run() },
+        ]
+      )
+      return
+    }
+    void run()
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -187,6 +242,14 @@ export default function SessionBuilderScreen() {
           />
           <Pressable onPress={() => setDetailsSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.detailsButton}>
             <Info size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Pressable
+            onPress={() => setExportSheetOpen(true)}
+            disabled={blocks.length === 0}
+            hitSlop={layout.hitSlop}
+            style={styles.detailsButton}
+          >
+            <Share2 size={22} color={blocks.length === 0 ? colors.textDisabled : colors.textPrimary} />
           </Pressable>
           <HeaderActionButton label="+" onPress={() => setPickerOpen(true)} />
         </View>
@@ -253,6 +316,22 @@ export default function SessionBuilderScreen() {
         onSave={(minutes) => {
           if (durationTarget) handleSaveDuration(durationTarget, minutes)
         }}
+      />
+
+      <ExportSheet
+        visible={exportSheetOpen}
+        detail={exportDetail}
+        detailOptions={SESSION_EXPORT_DETAIL_OPTIONS}
+        hint={
+          exportDetail === 'full'
+            ? 'A PDF: a cover page, then one page per activity with its coaching points.'
+            : 'A PDF: two activities per page, for scanning the session at a glance.'
+        }
+        busy={exporting}
+        error={null}
+        onChangeDetail={setExportDetail}
+        onShare={handleShare}
+        onClose={() => setExportSheetOpen(false)}
       />
 
       <SessionDetailsSheet

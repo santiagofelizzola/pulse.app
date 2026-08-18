@@ -12,6 +12,7 @@ import Animated, {
 import { colors, layout, motion, radius, shadow, spacing, typography } from '../../../theme/theme'
 import { blockTypeColor, blockTypeLabel } from '../../../utils/blockTypes'
 import type { SessionActivity } from '../../../types'
+import { coachingPointLines } from '../../../utils/coachingPoints'
 
 // Collapsed card height is fixed (not measured) so the drag-reorder math below has an exact,
 // known row step. All cards are forced collapsed for the duration of any drag (see
@@ -56,7 +57,7 @@ export function SessionBlockCard({
   // placeholder instead of leaving a broken image.
   const [imageFailed, setImageFailed] = useState(false)
   const coachingLines = block.coachingPoints
-    ? block.coachingPoints.split('\n').map((line) => line.trim()).filter(Boolean)
+    ? coachingPointLines(block.coachingPoints)
     : []
 
   const dragGesture = Gesture.Pan()

@@ -1,9 +1,15 @@
-import { stage } from '../export/errors'
+import { ExportError, stage } from '../export/errors'
 import { renderAndCapture, setExportStatus } from '../export/exportHost'
 import { fileSize, publishExportFile, resetExportsDir, toSafeBasename } from '../export/files'
 import { LIGHT_EXPORT_PALETTE } from '../export/palette'
+import { buildPdfFromPageImages } from '../export/pdf'
+import {
+  buildSessionPages,
+  SESSION_MAX_ACTIVITIES,
+  SESSION_WARN_ACTIVITIES,
+} from '../export/sessionPages'
 import { shareFile, SharingUnavailableError } from '../export/share'
-import { activitySpec, lineupSpec } from '../export/specs'
+import { activitySpec, lineupSpec, sessionPageSpec } from '../export/specs'
 import type {
   ActivityArtifactInput,
   ExportOptions,
@@ -11,6 +17,7 @@ import type {
   LineupArtifactInput,
 } from '../export/types'
 import type { RenderSpec } from '../export/exportHost'
+import type { Session } from '../types'
 
 export { SharingUnavailableError } from '../export/share'
 export { ExportError, exportErrorMessage } from '../export/errors'
@@ -105,6 +112,73 @@ export async function exportLineup(lineup: LineupArtifactInput, options: ExportO
     dialogTitle: 'Share lineup',
     logLabel: `lineup "${lineup.name || 'untitled'}"`,
   })
+}
+
+/**
+ * Exports a session as a PDF and hands it to the native share sheet.
+ *
+ * Two stages, deliberately:
+ *
+ * One capture per PAGE, serially, so at most one full-size bitmap is alive at a time. The
+ * diagrams inside each page render live and are scaled by ScaledDiagram, which keeps the editor's
+ * proportions without an intermediate raster per activity.
+ */
+export async function exportSession(session: Session, options: ExportOptions): Promise<ExportResult> {
+  const palette = options.palette ?? LIGHT_EXPORT_PALETTE
+  const blocks = session.activities
+
+  if (blocks.length === 0) throw new ExportError('capture', new Error('This session has no activities yet.'))
+  if (blocks.length > SESSION_MAX_ACTIVITIES) {
+    throw new ExportError(
+      'capture',
+      new Error(`Sessions above ${SESSION_MAX_ACTIVITIES} activities are too large to export.`)
+    )
+  }
+
+  setExportStatus('Preparing export...')
+
+  try {
+    await stage('prepare', () => resetExportsDir())
+
+    const pages = buildSessionPages(blocks, options.detail)
+
+    const pageImages = await stage('capture', async () => {
+      const images: string[] = []
+      for (let index = 0; index < pages.length; index += 1) {
+        setExportStatus(`Rendering page ${index + 1} of ${pages.length}...`)
+        const capture = await renderAndCapture(
+          sessionPageSpec(pages[index], session, palette, index + 1, pages.length)
+        )
+        // encoding: 'data-uri' means `uri` IS the image, ready for the PDF's HTML.
+        images.push(capture.uri)
+      }
+      return images
+    })
+
+    setExportStatus('Building PDF...')
+
+    const result = await stage('write', async () => {
+      const printed = await buildPdfFromPageImages(pageImages)
+      const uri = await publishExportFile(printed, toSafeBasename(session.name, 'Pulse session'), 'pdf')
+      return { uri, widthPx: 0, heightPx: 0, byteSize: await fileSize(uri) }
+    })
+
+    console.log(
+      `[export] session "${session.name || 'untitled'}" -> ${pages.length} pages, ` +
+        `${(result.byteSize / 1024).toFixed(0)}KB`
+    )
+
+    await stage('share', () => shareFile(result.uri, 'pdf', 'Share session'))
+
+    return result
+  } finally {
+    setExportStatus(null)
+  }
+}
+
+/** True when a session is large enough to be worth warning about before exporting. */
+export function shouldWarnBeforeSessionExport(session: Session): boolean {
+  return session.activities.length > SESSION_WARN_ACTIVITIES
 }
 
 export function isSharingUnavailable(error: unknown): boolean {
