@@ -14,6 +14,21 @@ const STAGE_LABELS: Record<ExportStage, string> = {
   share: 'opening the share sheet',
 }
 
+/**
+ * The coach backed out of an export in progress. Not a failure — callers show nothing.
+ */
+export class ExportCancelledError extends Error {
+  constructor() {
+    super('Export cancelled')
+    this.name = 'ExportCancelledError'
+  }
+}
+
+export function isExportCancelled(error: unknown): boolean {
+  if (error instanceof ExportCancelledError) return true
+  return error instanceof ExportError && error.cause instanceof ExportCancelledError
+}
+
 export class ExportError extends Error {
   readonly stage: ExportStage
   readonly cause: unknown

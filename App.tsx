@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { getDatabase } from './src/db/database'
+import { clearStaleExports } from './src/export/files'
 import RootNavigator from './src/navigation'
 import { navigationRef } from './src/navigation/rootNavigation'
 
@@ -30,6 +31,9 @@ export default function App() {
   useEffect(() => {
     getDatabase()
     setDbReady(true)
+    // Sweep any artifact left behind by a previous run. Deliberately not awaited — it is cache
+    // housekeeping and must never delay first paint.
+    void clearStaleExports()
   }, [])
 
   const onLayoutRootView = useCallback(async () => {

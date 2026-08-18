@@ -96,6 +96,7 @@ export function ExportRenderHost() {
   const job = useExportHostStore((state) => state.job)
   const status = useExportHostStore((state) => state.status)
   const clear = useExportHostStore((state) => state.clear)
+  const cancel = useExportHostStore((state) => state.cancel)
 
   const captureTargetRef = useRef<View>(null)
 
@@ -192,7 +193,9 @@ export function ExportRenderHost() {
   }, [job, measuredHeight, width, clear])
 
   return (
-    <Modal visible={job !== null} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={() => {}}>
+    // onRequestClose is Android's back gesture. It used to be a no-op, which trapped the coach
+    // inside a long multi-page session export with no way out.
+    <Modal visible={job !== null} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={cancel}>
       <View style={styles.root}>
         {job && width > 0 ? (
           // Width is fixed, height is left to content and then measured — see measuredHeight.

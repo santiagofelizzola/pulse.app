@@ -30,7 +30,10 @@ export async function buildPdfFromPageImages(pageDataUris: string[]): Promise<st
   const { width, height } = SESSION_PAGE
 
   const pages = pageDataUris
-    .map((uri) => `<div class="page"><img src="${uri}" /></div>`)
+    .map((uri, index) => {
+      const last = index === pageDataUris.length - 1
+      return `<div class="page${last ? ' last' : ''}"><img src="${uri}" /></div>`
+    })
     .join('')
 
   const html = `<!DOCTYPE html>
@@ -47,7 +50,16 @@ export async function buildPdfFromPageImages(pageDataUris: string[]): Promise<st
         break-after: page;
       }
       .page:last-child { page-break-after: auto; break-after: auto; }
+      /* One pixel shorter on the final page only.
+       *
+       * expo-print's Android renderer counts pages as 1 + floor(contentHeight / pageHeight)
+       * (PrintPDFRenderTask.kt). Content that is an EXACT multiple of the page height — which N
+       * pages of exactly ${height}px is — therefore yields N+1, and the document ends with a
+       * blank page. Coming up a pixel short makes the division land on N. Invisible either way,
+       * and harmless on iOS, which paginates through WKWebView instead. */
+      .page.last { height: ${height - 1}px; }
       .page img { display: block; width: ${width}px; height: ${height}px; }
+      .page.last img { height: ${height - 1}px; }
     </style>
     ${pages}
   </body>

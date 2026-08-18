@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 
+import { ExportCancelledError } from './errors'
 import type { CaptureResult } from './capture'
 
 // What the host needs in order to render and capture something, with no idea what subject it
@@ -42,17 +43,34 @@ interface ExportHostState {
   enqueue: (job: RenderJob) => void
   clear: (id: number) => void
   setStatus: (status: string | null) => void
+  cancel: () => void
 }
 
 export const useExportHostStore = create<ExportHostState>((set, get) => ({
   job: null,
   status: null,
-  enqueue: (job) => set({ job }),
+  // Rejects whatever it displaces. Overwriting the slot silently used to strand the previous
+  // job's promise forever — nothing would ever resolve or reject it — so a double-tapped Share
+  // left the coach on a spinner with no error.
+  enqueue: (job) => {
+    const current = get().job
+    if (current) current.reject(new ExportCancelledError())
+    set({ job })
+  },
   // Guarded by id so a late clear from an abandoned job can't wipe a newer one.
   clear: (id) => {
     if (get().job?.id === id) set({ job: null })
   },
   setStatus: (status) => set({ status }),
+
+  // Backing out of an in-flight export (Android's back gesture over the render host). The job
+  // rejects with ExportCancelledError, which callers treat as "say nothing" rather than an error.
+  cancel: () => {
+    const current = get().job
+    if (!current) return
+    current.reject(new ExportCancelledError())
+    set({ job: null, status: null })
+  },
 }))
 
 let nextJobId = 1

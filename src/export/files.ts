@@ -83,6 +83,22 @@ export async function publishExportFile(fromUri: string, basename: string, exten
   return to
 }
 
+/**
+ * Best-effort sweep of leftover exports, for app start.
+ *
+ * An export that was shared and then abandoned leaves its file behind until the NEXT export runs
+ * (see resetExportsDir for why cleanup cannot happen on completion). Without this, a coach who
+ * exports once and never again keeps that file indefinitely. Never throws — a failed cleanup of
+ * a cache directory must not stop the app from launching.
+ */
+export async function clearStaleExports(): Promise<void> {
+  try {
+    await FileSystem.deleteAsync(EXPORTS_DIR, { idempotent: true })
+  } catch {
+    // Cache directory; the OS reclaims it under pressure regardless.
+  }
+}
+
 export async function fileSize(uri: string): Promise<number> {
   const info = await FileSystem.getInfoAsync(uri)
   return info.exists && !info.isDirectory ? info.size : 0
