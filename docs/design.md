@@ -126,7 +126,7 @@ Each block type gets a **base** color (the 4px bar, dots, line previews) and a *
 | Transition | `colors.block.transition` | `#0891B2` | `colors.block.transitionTint` | `#E3F4F8` |
 | Game | `colors.block.game` | `#7C3AED` | `colors.block.gameTint` | `#F0E9FD` |
 
-These eight values are the canonical `BlockType` set and match the `BlockType` enum in `architecture.md`. They color-code **session blocks** (the card's left bar). Library filter chips key off `ActivityTag`, a wider set (adds `finishing`, `set-piece`) — those chips use the standard filter-chip treatment (§6), **not** per-tag colors, so no extra tokens are needed for them.
+These eight values are the canonical `BlockType` set and match the `BlockType` enum in `architecture.md`. They color-code **session blocks** (the card's left bar). Library filter chips key off `ActivityTag`, a wider set (adds `finishing`, `set-piece`, `rondo`, `position-play`, `training-game`) — those chips use the standard filter-chip treatment (§6), **not** per-tag colors, so no extra tokens are needed for them, and the tag set can keep growing without touching this palette.
 
 > **Two close-color clusters — never rely on color alone:** Pressing/Defending are deliberately close reds (`#DC2626` / `#EF4444`), and Technical/Attacking/Game form a cool blue-violet cluster (`#6366F1` / `#3B82F6` / `#7C3AED`). Always pair the bar with the block-type label text so the two are distinguishable.
 
@@ -274,7 +274,7 @@ The default container. Quiet by design.
 - **Left color bar**: width 4, full card height, `colors.block.<type>`, radius matches card's left corners (`borderTopLeftRadius`/`borderBottomLeftRadius` = `radius.lg`). Implement as an absolutely-positioned view or a flex column so it bleeds to the card edges; card content gets `paddingLeft: spacing.lg + 4`.
 - **Canvas thumbnail**: square, 56×56, `radius.sm`, 1px `colors.borderSubtle`, `colors.surfaceSunken` placeholder when empty.
 - **Title**: `typography.h3`, `colors.textPrimary`. **Block-type overline**: `typography.overline`, uppercase, color = block base.
-- **Coaching points**: collapsed by default with a chevron + count (`"3 coaching points"`, `typography.caption`, `colors.textSecondary`). Expands inline (layout animation, §9), revealing a bulleted list in `typography.callout`. Divider above the list = 1px `colors.borderSubtle`.
+- **Coaching points**: collapsed by default with a chevron + count (`"3 coaching points"`, `typography.caption`, `colors.textSecondary`). Expands inline (layout animation, §10), revealing a bulleted list in `typography.callout`. Divider above the list = 1px `colors.borderSubtle`. Stored as one freeform string, **one point per line** — every surface that displays them shares a single splitter, because the export's page-height budget depends on the line count being exact.
 
 ### Tag / Chip
 
@@ -329,7 +329,7 @@ Used for the canvas background picker and contextual pickers (e.g. object color,
 | Shadow | `shadow.lg` |
 | Detents | content-height by default; large pickers use a ~90% detent |
 
-Dismiss on backdrop tap and downward drag. Spring animation (§9).
+Dismiss on backdrop tap and downward drag. Spring animation (§10).
 
 ### Tab Bar
 
@@ -367,13 +367,17 @@ Large-title pattern (Monarch / iOS), transparent over `colors.background`.
 | Trailing actions | up to 2 icon buttons, 24 icon, 44 touch target, `colors.textPrimary` |
 | Action spacing | `spacing.lg` between trailing actions |
 
-The canvas uses its **own** dark bar (see §7), not this component.
+The canvas uses its **own** light bar (see §7), not this component.
 
 ---
 
 ## 7. Canvas Design Rules
 
-The canvas screen is **one continuous light surface** (`colors.background`), not a full-bleed dark-chrome-over-white-pitch composition — reference: SoccerDrive/Sogility. The pitch itself is fit to `canvas.pitchAspectRatio` (a real pitch's ~105:68 length:width, rotated to portrait) rather than stretched to fill the viewport, centered with margin above/below/beside it, bordered with a thin `colors.canvasInk` hairline so its edge reads clearly against the page — no dark margin framing it. **The pitch surface itself stays white (`colors.background`) with dark line markings (`colors.canvasInk`)** for legibility and print-friendliness; what changed is the chrome around it, not the pitch rendering itself. Top bar and tools are both light and sit **outside** the pitch (tools below it, not floating over it) rather than as dark overlays receding over the field.
+The canvas screen is **one continuous light surface** (`colors.background`), not a full-bleed dark-chrome-over-white-pitch composition — reference: SoccerDrive/Sogility. The pitch is fit to its background's own aspect ratio rather than stretched to fill the viewport, centered with margin above/below/beside it, bordered with a thin `colors.canvasInk` hairline so its edge reads clearly against the page — no dark margin framing it. **On the drawing canvas the pitch surface stays white (`colors.background`) with dark line markings (`colors.canvasInk`)** for legibility and print-friendliness; what changed is the chrome around it, not the pitch rendering itself. Top bar and tools are both light and sit **outside** the pitch (tools below it, not floating over it) rather than as dark overlays receding over the field.
+
+> The white pitch is the **default surface**, not the only one. Lineups can choose a surface preset per lineup — see *Pitch styles* below. The drawing canvas offers no such picker.
+
+**Aspect ratio is per background**, not one constant. `canvas.pitchAspectRatio` (68:105 — a real pitch rotated to portrait) covers full-pitch and blank; a half pitch, a third and the penalty-box crop each derive their own from real pitch dimensions, so a cropped background gets a shorter frame rather than the same tall shape with empty grass below it.
 
 ### Top bar (light)
 
@@ -392,7 +396,7 @@ The canvas screen is **one continuous light surface** (`colors.background`), not
 
 ### Background picker
 
-Opens as a bottom sheet (§5) showing the six `CanvasBackground` options — full pitch, half pitch, final third, middle third, penalty box, blank — as 16:10 thumbnail tiles, `radius.md`, selected tile ringed 2px `colors.primary`.
+Opens as a bottom sheet (§6) showing the six `CanvasBackground` options — full pitch, half pitch, final third, middle third, penalty box, blank — as 16:10 thumbnail tiles, `radius.md`, selected tile ringed 2px `colors.primary`.
 
 ### Player markers
 
@@ -400,21 +404,31 @@ Opens as a bottom sheet (§5) showing the six `CanvasBackground` options — ful
 |---|---|
 | Diameter | 30 (default) |
 | Shape | circle, `radius.pill` |
-| Fill | `colors.surface` (white) by default; team color fills are an option |
+| Fill | `colors.surface` (white) by default; a per-object `color` overrides it (same swatch set as equipment, below) |
 | Border | 2px `colors.canvasInk` (or team color) |
-| Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`, `colors.canvasInk`. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
+| Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`. Ink is `colors.canvasInk` on a light fill and flips to white on a dark one — perceived brightness, not a full contrast ratio, which is enough for a fixed swatch set. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
 | Palette presets | The players tool offers three quick options: a plain (blank-label) marker, and two labelled presets — **GK** and **Co** — which simply place a marker with that `label` value. All other labels are entered ad-hoc. No non-circle player shapes (triangle/square/etc. belong to equipment/zones, not markers). |
 | Min touch target | 44 (use transparent hit area padding around the 30px visual) |
 
 ### Equipment icons
 
-Curated set: cone, mini-goal, ball, pole, ladder, flag, marker disc. Rendered from **vector SVG assets** (in `assets/icons/`, loaded via Skia's SVG support), sized to ~26×26 on canvas with consistent visual weight next to player markers. Selectable/movable like any object.
+Placeable set: **cone, goal, mini-goal, and two balls** (black-and-white, colored). Rendered from **vector SVG assets** in `assets/icons/`, loaded via Skia's SVG support, sized for consistent visual weight next to player markers. Selectable/movable like any object.
 
-- **Recolor to the pitch.** The source SVGs were drawn for a green pitch (white/grey fills and white net/marking strokes). On the white pitch those white strokes would disappear, so equipment is recolored to monochrome `colors.canvasInk` on load. The **disc** is drawn as two concentric circles — an outer filled circle in the object color with a smaller white inner circle — rather than a flat ellipse.
-- **Per-object color (cone & disc).** `Cone` and `Disc` each carry an optional `color` field (see `architecture.md`); it defaults to `colors.canvasInk` and is rendered from that field. The **color-editing UI** (picking a new color for a placed cone/disc) is part of the selection toolbar and lands in **Session 3** — Session 2 only adds the data field and renders the default.
-- **Goal & mini-goal** are two distinct SVG assets (a full goal and a narrower mini-goal), not one frame scaled — both recolored to `canvasInk`.
+- **Assets are pre-cleaned and pre-colored offline**, not recolored at runtime. DOCTYPE and CSS are stripped so Skia's parser — which does no CSS cascade resolution — reads them natively, and each file already carries the right ink for a white pitch. The one runtime substitution is a literal text replace for `currentColor`, which Skia won't resolve on its own.
+- **Sizing is calibrated per asset, not declared.** Each source file has a different viewBox and a different amount of empty margin around its ink, so identical width numbers render at visibly different sizes. The stored width for each asset is a *measured* value correcting for that, so equal numbers produce equal footprints. The rule: everything renders clearly smaller than the 30px player marker **except the full goal**, which stays large by design.
+- **Per-object color.** `Cone`, `Disc` and `PlayerMarker` each carry an optional `color`, edited from the selection toolbar. **Preset swatches only** — no arbitrary color entry. The **disc** is drawn as two concentric circles (an outer filled circle in the object color, a smaller white inner circle), not a flat ellipse.
+- **Goal & mini-goal** are two distinct SVG assets, not one frame scaled.
 
-> Each equipment item is its own `PlacedObject` type — `Cone`, `Ball`, `Goal`/`MiniGoal`, `Pole`, `Ladder`, `Flag`, `Disc` — matching the existing per-type pattern (see `architecture.md`). No generic `equipment` + `variant` type: every item gets an explicit interface so `PlacedObject` switches stay exhaustively checked by TypeScript as the set grows.
+> Each equipment item is its own `PlacedObject` type — `Cone`, `Ball`, `Goal`/`MiniGoal`, `Pole`, `Ladder`, `Flag`, `Disc` — matching the existing per-type pattern (see `architecture.md`). No generic `equipment` + `variant` type: every item gets an explicit interface so `PlacedObject` switches stay exhaustively checked by TypeScript as the set grows. Pole, ladder, flag and disc keep their types but are **not in the palette**.
+
+### Shapes
+
+Two zone objects — a **rectangle** (`Zone`) and a **circle** (`CircleZone`) — drawn on the pitch to mark an area.
+
+- **Placed by drag, not by tap.** Touch-down and release are the rectangle's opposite corners, or the endpoints of the circle's diameter, with a live preview while dragging. Sizing a zone is the point of it, so placing and sizing are one gesture.
+- A very short drag still yields a usable shape: the footprint is floored at 40px.
+- After placing, the tool disarms back to select — a shape is usually adjusted next, not repeated.
+- Rectangles resize on **width and height independently** — the one non-uniform transform on the canvas; everything else scales uniformly.
 
 ### Movement lines & arrows
 
@@ -422,10 +436,10 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 
 | Line type | Meaning (`ArrowType`) | Spec |
 |---|---|---|
-| Solid | Pass (`pass`) | single stroke, width **2.5** |
-| Double solid | Shot (`shot`) | two parallel strokes width **2.5**, gap **5** between centers |
-| Dashed | Off-ball movement (`run`) | width **2.5**, dash pattern `[8, 6]` |
-| Squiggly / wavy | Dribble (`dribble`) | width **2.5**, sine wave amplitude **5**, wavelength **16** |
+| Solid | Pass (`pass`) | single stroke, width **2.0** |
+| Double solid | Shot (`shot`) | two parallel strokes width **2.0**, gap **3** between centers |
+| Dashed | Off-ball movement (`run`) | width **2.0**, dash pattern `[8, 6]` |
+| Squiggly / wavy | Dribble (`dribble`) | width **2.0**, sine wave amplitude **5**, wavelength **16** |
 
 - **Arrowhead**: filled triangle, length 12, width 10, at the terminal point, matching stroke color. Present on pass, shot, and movement lines; the dribble line ends in an arrowhead too.
 - Drawn with React Native Skia paths. Keep stroke widths fixed in screen space (do not scale with zoom) so lines stay legible.
@@ -435,17 +449,63 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 
 - **Selection state**: 1.5px `colors.primary` bounding outline with `radius.sm`; for lines, highlight the path itself at width +1 in `colors.primary`.
 - **Handles**: rotate/scale handles as 20px circles, white fill, 1.5px `colors.primary` border, `shadow.sm`. Touch target 44 via hit-slop.
-- **Selection toolbar**: floating pill (`colors.overlayBar`, `radius.pill`, `shadow.md`) with contextual actions — duplicate, color, line-type (for lines), bring-to-front, delete. Icons 22, `colors.textInverse`; delete icon `colors.error`.
+- **Selection toolbar**: floating pill (`colors.overlayBar`, `radius.pill`, `shadow.md`) with contextual actions — duplicate, color, bring-to-front, delete. Icons 22, `colors.textInverse`; delete icon `colors.error`. **Color appears only for objects that carry one** (cone, disc, player marker); it is absent otherwise rather than shown disabled.
   - **Default position**: floats **above** the selected object, gap `spacing.sm`.
-  - **Flip rule**: when the object's top edge sits within the **top 25%** of the canvas height, the toolbar **flips to below** the object (same gap) so it never collides with the dark top bar. Compute against canvas height, animate the reposition (§9).
+  - **Flip rule**: when the object's top edge sits within the **top 25%** of the canvas height, the toolbar **flips to below** the object (same gap) so it never collides with the top bar. Compute against canvas height, animate the reposition (§10).
+  - **Not built**: a **line-type** action for switching a drawn arrow between pass/shot/run/dribble after the fact. Specified here, not implemented — the line type is fixed at draw time.
 
 ### Layering (z-index intent)
 
 Pitch background → drawn objects → selection outline/handles → selection toolbar → tool palette / top bar.
 
+Within "drawn objects", **objects and arrows share a single stacking order** even though they live in two arrays — so *bring to front* on a line genuinely places it above equipment, not just above other lines.
+
 ### Lineup view (reuses these primitives)
 
-The lineup editor is not a separate visual system — it reuses the **pitch background** and **player markers** defined above. Editing starts with a **squad size** choice (7v7 / 9v9 / 11v11), which filters the formation list to that size's four options (three named formations + custom); changing squad size after positions are placed should warn before discarding them. A formation then arranges labelled player markers into positions on a full-pitch background; the same 30px marker, label typography (`fonts.semibold`), and touch-target rules apply. Differences from the drawing canvas: no arrows or equipment, markers snap to formation slots (or free-place under "custom"), and each marker's label is a player name/initials. The top bar and export affordance match the canvas. Keep the two visually consistent so a coach reads them as one app.
+The lineup editor is not a separate visual system — it reuses the **pitch background** and **player markers** defined above. Editing starts with a **squad size** choice (7v7 / 9v9 / 11v11), which filters the formation list to that size's four options (three named formations + custom); changing squad size after positions are placed warns before discarding them. A formation then arranges labelled player markers into positions on a full-pitch background; the same 30px marker, label typography (`fonts.semibold`), and touch-target rules apply. Differences from the drawing canvas: no arrows or equipment, markers snap to formation slots (or free-place under "custom"), and each marker's caption is a player name/initials. The top bar and export affordance match the canvas. Keep the two visually consistent so a coach reads them as one app.
+
+Below the pitch sits a **subs row** — a horizontally scrolling row of pill chips (filter-chip metrics, §6) plus a tonal "+ Add sub" chip. Substitutes are a name and an optional position, not markers on the pitch.
+
+Unlike the drawing canvas, a lineup's **appearance is saved with the record** and chosen in one Appearance sheet. Four choices, all per lineup:
+
+#### Pitch styles
+
+The pitch renderer is **value-driven**: it draws whatever a style object describes and never learns preset names. A preset is a new entry in the style map plus a new union member — never new rendering code.
+
+| Field | What it governs |
+|---|---|
+| `bands` | Band colors, applied top to bottom and cycled. A single entry is a flat surface |
+| `striped` | Whether `bands` repeats down the pitch as mowing stripes, or fills flat with `bands[0]` |
+| `lineColor` | The pitch markings drawn over the bands |
+| `captionColor` | Text sitting directly on the surface — the player-name captions. Part of the style because a dark caption vanishes on a dark surface |
+| `captionGlowColor` | Halo behind that caption, always the opposite tone to `captionColor`. Low-alpha — separation, not a drop shadow. It is what keeps a name legible where it crosses a stripe boundary or a marking |
+| `bandCount?` | Stripe count override; falls back to `canvas.pitch.bandCount` (11 — odd, so top and bottom bands match and one band centers on the halfway line) |
+
+Two presets ship: **White** (flat white, dark markings — the default, matching the drawing canvas) and **Green stripes** (two-tone mown turf, white markings and captions). An unrecognized stored value resolves back to White rather than failing to render.
+
+#### Marker styles
+
+**Circle** (default, the 30px marker above) or **Jersey** — a shirt silhouette. Two calibrations make the jersey work and must move together if either changes:
+
+- It renders at **1.875× the circle's diameter**. Only the torso panel can carry marker text, and the torso is half the asset's width — a jersey scaled to 30px leaves ~15px of torso for a two-letter role needing ~22px, and the label spills onto the sleeves.
+- Height is **75% of its natural aspect**, not the viewBox's. The source art reads as a tank top at marker size; squashing makes it wider than tall, which is how a real shirt reads with the sleeves out.
+- The marker text centers on the **chest, not the bounding box** — the collar eats the top, so box-centered text rides up onto the neck.
+
+Kit fill and outline are independent colors in the asset, so the outline stays a fixed tone whatever the kit color.
+
+#### Marker label — blank / number / position
+
+What every marker shows **inside** its shape. The name caption below the marker is unaffected and always shows.
+
+- **Blank** (default) — clean markers. A coach opts in to annotation rather than clearing a default.
+- **Number** — the shirt number. Numbers are assigned the moment this mode is first chosen and are freely overridable; a player without one renders blank rather than falling back to a role, because the mode is a promise about what the text means.
+- **Position** — the role abbreviation (GK, CB, ST, …).
+
+Switching away keeps numbers stored but unrendered, so a trip through the other modes and back shows the same numbers.
+
+#### Team & keeper colors
+
+Two swatches: **team color** fills every outfield marker, **keeper color** the one goalkeeper. The picker leads with an explicit **white** swatch — white is what an uncolored marker already renders as, and without it a coach who tried a kit color had no way back to the default. Label ink flips for contrast exactly as on the canvas.
 
 ---
 
@@ -518,6 +578,40 @@ Restraint is the rule. Motion confirms an action or maintains spatial continuity
 - **Training tab → Canvas**: pressing the Training tab opens the Canvas modal directly (standard modal present transition); no sheet, no intermediate screen.
 - **Empty state / list load**: a single, subtle staggered fade-in (opacity + 8px translateY, `motion.base`, ~40ms stagger) on first mount only. One orchestrated reveal beats scattered micro-animations.
 - **Avoid**: looping animations, parallax, bouncy overshoot on content, anything that draws the eye away from the coach's marks on the canvas.
+
+---
+
+## 11. Export Artifacts
+
+What leaves the app and lands in a team chat. The governing rule: **an artifact is the diagram, full bleed.** No title, no metadata block, no footer, no watermark — what the coach sees in the editor is exactly what lands in the file.
+
+### Palette
+
+Templates **never import `colors`**. They take an `ExportPalette` — a narrow subset of tokens (background, surface, text, borders, accent, the block-type pairs) passed in as an argument. Exports are always light today; the indirection means a future dark export is a parameter, not a rewrite of every template.
+
+A lineup's own `pitchStyle` and `markerStyle` are **record data, not theme** — they stay driven by the saved lineup, so no palette change can ever repaint a coach's white pitch green.
+
+### Fidelity
+
+The app's own components render the artifact — the same pitch and diagram components the editors use. An export that draws its own version of the pitch is an export that silently stops matching the app.
+
+Canvas geometry is in **absolute points** (30pt markers, 26pt equipment, 2pt pitch lines, a 20pt margin, 13–14pt captions), so drawing straight into a small slot does not shrink a pitch — it inflates everything on it: markers jump from 8% of pitch width to 12%, and the inner margin becomes a fat white gap. Diagrams are therefore drawn at a **360pt reference width** and the *rendered result* is scaled into its slot. Scaling is essentially always down, so it costs nothing in sharpness.
+
+### Session PDF pages
+
+Pages are **360×640pt** — phone-shaped, never A4. A4 fit to a phone screen renders 15pt body text at about 7pt; a 9:16 page fills the screen edge to edge at fit-width, so type reads at its true size.
+
+| Page | Contents |
+|---|---|
+| Cover (Full plan only) | Session title, duration · block count · players, focus, running order with block-type dots, coaching moments |
+| Detail (Full plan) | One drill: block tag + duration, title, diagram, coaching points |
+| Overview card | Block-type color bar (4px), diagram, title, block tag + duration |
+
+Overview cards **divide the page body evenly**, so a page fills whether it carries three activities or six, and a short final page gets taller cards rather than a hole. Card height is floored (below which a card can't hold a name, a tag and a legible diagram) and capped (so a two-activity session doesn't stretch each card to a third of a page).
+
+Every page carries a one-line footer: session name · page *n* of *m*. This is the **one place** an artifact carries chrome — a multi-page document read on a phone needs to say where you are in it.
+
+> **Nothing on a page shrinks to fit.** Flex children don't compress by default, so an underestimated text height doesn't squeeze the layout — it pushes the last line straight through the footer rule. Height budgets are computed from real laid-out values, and coaching points are counted as *rendered lines* (one point per line, plus wrapping), never as raw character count.
 
 ---
 
@@ -620,11 +714,33 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  marker: { diameter: 30, border: 2 },
+  // captionGlow is a glow, not a directional shadow: zero offset, small blur.
+  marker: { diameter: 30, border: 2, captionGlow: { radius: 5, offset: { width: 0, height: 0 } } },
   equipment: { size: 26 },
+  pitchLine: { width: 2 },
+  // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the
+  // PitchStyleValue objects PitchBackground renders from — components never name a pitch color.
+  pitch: {
+    white: '#FFFFFF',
+    ink: '#16181A',
+    turfDark: '#357007',
+    turfLight: '#4F980C',
+    // Caption glow: a soft halo behind the player-name text, always the opposite tone to the
+    // caption itself, so the letters separate from whatever they sit on (mowing stripes, a
+    // marking line). Kept low-alpha — separation, not a drop shadow.
+    glowLight: 'rgba(255, 255, 255, 0.80)',
+    glowDark: 'rgba(22, 24, 26, 0.65)',
+    // Mowing bands drawn across the pitch height. Odd, so the top and bottom bands share a shade
+    // (symmetric) and one band sits centered on the halfway line.
+    bandCount: 11,
+  },
+  // width:height for a portrait pitch (a real pitch is ~105x68 length:width; rotated to
+  // portrait that's width:height = 68:105). The canvas is fit to this ratio, not full-bleed,
+  // so pitch markings stay proportionally correct instead of stretching to fill the screen.
+  pitchAspectRatio: 68 / 105,
   line: {
-    strokeWidth: 2.5,
-    doubleGap: 5,
+    strokeWidth: 2.0,
+    doubleGap: 3,
     dash: [8, 6],
     waveAmplitude: 5,
     waveLength: 16,

@@ -4,7 +4,7 @@
     "slug": "pulse",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/brand/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -29,7 +29,14 @@
     "plugins": [
       "expo-sqlite",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brand/splash-mark.png",
+          "backgroundColor": "#1A7A44",
+          "imageWidth": 200
+        }
+      ],
       "expo-asset",
       "expo-sharing"
     ]

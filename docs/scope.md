@@ -26,19 +26,21 @@ Two features, both fully offline and stored locally:
 
 > **Free-draw canvas → activity library → session builder → local export.**
 
-- **Canvas** — pitch with tool palette, background picker, player markers, equipment, and movement lines (pass / shot / off-ball / dribble). Free-draw diagramming of a single drill or phase.
-- **Activity library** — save canvas diagrams as reusable activities. An activity carries a name, a single `tag`, optional duration, and freeform notes. Grid view with filter chips that key off the activity tag.
-- **Session builder** — sequence activities into a session (the hybrid card: color bar + canvas thumbnail + inline expandable coaching points). **Block type and coaching points are assigned per session block** (`SessionActivity`) when an activity is dropped into a session — not on the activity itself. The same activity can be a "warm-up" in one session and "technical" in another.
+- **Canvas** — pitch with tool palette, background picker, player markers, equipment, zone shapes, and movement lines (pass / shot / off-ball / dribble). Free-draw diagramming of a single drill or phase.
+- **Activity library** — save canvas diagrams as reusable activities. An activity carries a name, a single `tag`, optional duration, player count, player actions, and freeform notes. Grid view with filter chips that key off the activity tag.
+- **Session builder** — sequence activities into a session (the hybrid card: color bar + canvas thumbnail + inline expandable coaching points). A session also carries its own **focus**, **player count** and **coaching moments**. **Block type and coaching points are assigned per session block** (`SessionActivity`) when an activity is dropped into a session — not on the activity itself. The same activity can be a "warm-up" in one session and "technical" in another.
 
 ### 2. Lineups
 
-- Build a matchday lineup by picking a **squad size** (7v7 / 9v9 / 11v11), then a **formation** for that size (three named options + custom free placement), and arranging **labelled players** on a pitch. Reuses the canvas pitch and player markers — no roster needed; labels are entered ad-hoc.
-- Save lineups locally with a name and match date; browse, reopen, and delete them.
+- Build a matchday lineup by picking a **squad size** (7v7 / 9v9 / 11v11), then a **formation** for that size (three named options + custom free placement), and arranging **labelled players** on a pitch. Reuses the canvas pitch and player markers — no roster needed; labels are entered ad-hoc. Changing formation rearranges the squad rather than wiping it.
+- Each lineup carries its own **appearance** — pitch style, marker style, what markers show inside them (blank / number / position), and team + keeper colors — plus a list of **substitutes**. Appearance is a property of the lineup, not an app setting.
+- Save lineups locally with a name; browse, reopen, and delete them.
 
 ### Shared: local export
 
-- Export a session or a lineup to **PDF/image on-device** and hand it to the **native share sheet** (AirDrop, Messages, email). This is local — no account, no upload. A shareable **cloud link** is the v2 feature.
-- Sessions up to 6 activities export on a single PDF page; longer sessions paginate automatically (see `docs/architecture.md`).
+- Export a **drill** or a **lineup** as a PNG, or a **session** as a PDF, and hand it to the **native share sheet** (AirDrop, Messages, email). This is local — no account, no upload. A shareable **cloud link** is the v2 feature.
+- **Exporting is not saving.** A drill still on the canvas and a lineup not yet saved both export normally; neither is written to the library as a side effect.
+- A session exports two ways: an **Overview** (up to 6 activities per page, for scanning) or a **Full plan** (a cover page, then one drill per page). See `docs/architecture.md`.
 
 This is the entire build — roughly six Claude Code sessions across four phases (see `docs/architecture.md`). **There is no backend, no account, and no network dependency in the MVP.**
 
@@ -99,6 +101,8 @@ Real possibilities, but well beyond the current plan. Do not implement without a
 Decisions intentionally not made yet. Surface these when relevant rather than guessing.
 
 - **Pricing** — no payments in the MVP; the model and price are entirely open until a cloud service exists.
+- **Dark mode** — **deferred, not cancelled.** The target user is a solo coach working outdoors in daylight, and the migration cost is large. Nothing is broken today: the app pins itself to light. Prepped dark assets sit unreferenced in `assets/icons/` on purpose — do not remove them as dead files.
+- **Full-metadata export artifacts** — a richer artifact carrying title, tag, duration, notes and squad list. Built but unreachable: it doesn't fit the screen-height constraint the capture requires. The code is parked, not abandoned — see the decisions log in `docs/architecture.md`.
 
 All other items previously parked here — lineup formation set, session PDF pagination, equipment data model, dribble line treatment — are resolved. See the decisions log in `docs/architecture.md` and §7 of `docs/design.md`.
 

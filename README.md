@@ -2,7 +2,7 @@
 
 A focused, local-first mobile tool for solo youth soccer coaches: **plan training sessions** on a pitch canvas and **set matchday lineups** — all stored on the device, no account or internet required. Built for coaches who run club, high-school, and competitive teams without assistant staff.
 
-**Status:** Pre-build. Scope finalized, wireframes done, design system in place. MVP implementation starting.
+**Status:** MVP feature-complete on device. Canvas, activity library, session builder, lineups and local export all work end to end. Not yet shipped — screen polish against `docs/design.md` and a release build are still open.
 
 ---
 
@@ -10,8 +10,8 @@ A focused, local-first mobile tool for solo youth soccer coaches: **plan trainin
 
 Two features, both fully offline and stored locally on the phone:
 
-1. **Session planner** — *free-draw canvas → activity library → session builder → local export.* Diagram a drill on a full-screen pitch, save it as a reusable activity, sequence activities into a training session, and export to PDF/image via the OS share sheet.
-2. **Lineups** — pick a formation, arrange and label players on a pitch, and save the matchday lineup for the weekend. Reuses the same pitch and player markers as the canvas.
+1. **Session planner** — *free-draw canvas → activity library → session builder → local export.* Diagram a drill on a full-screen pitch, save it as a reusable activity, sequence activities into a training session, and export a drill as a PNG or a session as a PDF via the OS share sheet.
+2. **Lineups** — pick a formation, arrange and label players on a pitch, style the pitch and kit, add substitutes, and save the matchday lineup for the weekend. Reuses the same pitch and player markers as the canvas, and exports as a PNG.
 
 There is **no backend, no account, and no network dependency** in the MVP. The headline next version (v2) adds **account-based cloud sync** — sign in on phone or web and see the same library on both, with share-by-link included. See [`docs/scope.md`](docs/scope.md) for the full boundary.
 
@@ -21,12 +21,12 @@ There is **no backend, no account, and no network dependency** in the MVP. The h
 
 | Layer | Technology |
 |---|---|
-| Frontend | React Native (Expo bare workflow, RN 0.74+) + React Native Skia |
+| Frontend | React Native 0.86 (Expo 57, bare workflow) + React Native Skia |
 | Navigation | React Navigation v7 (native stack + bottom tabs) |
 | Client state | Zustand |
 | Persistence | expo-sqlite, behind a repository layer |
 | Files / thumbnails | expo-file-system |
-| Export | expo-print + expo-sharing (native share sheet) |
+| Export | react-native-view-shot + expo-print + expo-sharing (native share sheet) |
 | Typeface | Poppins (`@expo-google-fonts/poppins`) |
 | Version control | GitHub |
 | Build tooling | Claude Code (VS Code extension) |
@@ -49,12 +49,12 @@ These are the durable references for the project. Read them before building anyt
 
 ## Getting started
 
-> Commands are placeholders until the project is scaffolded — update once the Expo app exists.
-
 ```bash
 npm install
 npx expo run:ios        # or run:android
 ```
+
+`/ios` and `/android` are gitignored generated output — `app.json` is the source of truth, and `npx expo prebuild` regenerates them. Note that `expo run:*` only prebuilds when the native folder is **absent**; after changing icons or native config, run `npx expo prebuild --clean` or the change won't reach the build.
 
 No backend to run — the app is entirely on-device. Fonts (Poppins) are bundled via `@expo-google-fonts/poppins` and must finish loading before first paint; the splash screen is held until they're ready. See the typeface section of [`docs/design.md`](docs/design.md).
 
