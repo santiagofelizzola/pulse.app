@@ -1,8 +1,13 @@
+import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { SQUAD_SIZE_OPTIONS } from '../../../utils/formationSlots'
 import type { SquadSize } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface SquadSizePickerProps {
   onSelect: (squadSize: SquadSize) => void
@@ -17,16 +22,35 @@ export function SquadSizePicker({ onSelect }: SquadSizePickerProps) {
       <Text style={styles.supporting}>Pick the format for this lineup.</Text>
       <View style={styles.options}>
         {SQUAD_SIZE_OPTIONS.map((option) => (
-          <Pressable
-            key={option.value}
-            onPress={() => onSelect(option.value)}
-            style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
-          >
-            <Text style={styles.optionLabel}>{option.label}</Text>
-          </Pressable>
+          <SquadSizeOption key={option.value} label={option.label} onPress={() => onSelect(option.value)} />
         ))}
       </View>
     </View>
+  )
+}
+
+// Its own component only so each option can hold a press animation of its own — a hook can't be
+// called inside the map above. Renders exactly the Pressable it replaced; `pressed` moves to state
+// because reanimated cannot see through a function-form `style` prop.
+function SquadSizeOption({ label, onPress }: { label: string; onPress: () => void }) {
+  const [pressed, setPressed] = useState(false)
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => {
+        setPressed(true)
+        press.onPressIn()
+      }}
+      onPressOut={() => {
+        setPressed(false)
+        press.onPressOut()
+      }}
+      style={[styles.option, pressed && styles.optionPressed, press.animatedStyle]}
+    >
+      <Text style={styles.optionLabel}>{label}</Text>
+    </AnimatedPressable>
   )
 }
 

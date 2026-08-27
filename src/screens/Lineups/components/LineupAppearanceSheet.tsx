@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 import { Canvas } from '@shopify/react-native-skia'
 import { Check } from 'lucide-react-native'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
 import { SegmentedToggle } from '../../../components/ui/SegmentedToggle'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { PitchBackground } from '../../Canvas/components/PitchBackground'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { getMarkerTextColor, LINEUP_MARKER_SWATCHES } from '../../../utils/canvasUtils'
@@ -35,6 +37,8 @@ const TILE_HEIGHT = 92
 const TILE_MARGIN = 6
 const MARKER_TILE_SIZE = 72
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
 // Everything about how a lineup LOOKS, in one sheet: the pitch surface, the marker shape and what
 // it says, then the marker colors.
 // Marker colors use the same preset-swatch mechanism as the canvas's ColorPicker, extended to two
@@ -58,52 +62,29 @@ export function LineupAppearanceSheet({
     <BottomSheet visible={visible} onClose={onClose} title="Appearance">
       <Text style={styles.label}>Pitch</Text>
       <View style={styles.tileRow}>
-        {PITCH_STYLE_OPTIONS.map((option) => {
-          const isSelected = option.value === pitchStyle
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityLabel={option.label}
-              onPress={() => onSelectPitchStyle(option.value)}
-              style={styles.tileWrapper}
-            >
-              <View style={[styles.tile, isSelected && styles.tileSelected]}>
-                {/* The preview is the real renderer, so it can never drift from the pitch itself. */}
-                <Canvas style={styles.tileCanvas}>
-                  <PitchBackground
-                    background="full-pitch"
-                    width={TILE_WIDTH}
-                    height={TILE_HEIGHT}
-                    margin={TILE_MARGIN}
-                    style={PITCH_STYLES[option.value]}
-                  />
-                </Canvas>
-              </View>
-              <Text style={styles.tileLabel}>{option.label}</Text>
-            </Pressable>
-          )
-        })}
+        {PITCH_STYLE_OPTIONS.map((option) => (
+          <PitchStyleTile
+            key={option.value}
+            pitchStyle={option.value}
+            label={option.label}
+            isSelected={option.value === pitchStyle}
+            onPress={() => onSelectPitchStyle(option.value)}
+          />
+        ))}
       </View>
 
       <Text style={[styles.label, styles.sectionLabel]}>Marker style</Text>
       <View style={styles.tileRow}>
-        {MARKER_STYLE_OPTIONS.map((option) => {
-          const isSelected = option.value === markerStyle
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityLabel={option.label}
-              onPress={() => onSelectMarkerStyle(option.value)}
-              style={styles.markerTileWrapper}
-            >
-              <View style={[styles.markerTile, isSelected && styles.tileSelected]}>
-                {/* The preview is the real marker renderer, so it can never drift from the pitch. */}
-                <MarkerVisual markerStyle={option.value} color={teamColor} />
-              </View>
-              <Text style={styles.tileLabel}>{option.label}</Text>
-            </Pressable>
-          )
-        })}
+        {MARKER_STYLE_OPTIONS.map((option) => (
+          <MarkerStyleTile
+            key={option.value}
+            markerStyle={option.value}
+            label={option.label}
+            color={teamColor}
+            isSelected={option.value === markerStyle}
+            onPress={() => onSelectMarkerStyle(option.value)}
+          />
+        ))}
       </View>
 
       {/* Sits directly under Marker style: the two together are "what a marker looks like" (its
@@ -120,22 +101,111 @@ export function LineupAppearanceSheet({
   )
 }
 
+// The three tile/swatch components below are each their own component only so they can hold a
+// press animation of their own — a hook can't be called inside the maps above. Each renders
+// exactly the Pressable it replaced.
+function PitchStyleTile({
+  pitchStyle,
+  label,
+  isSelected,
+  onPress,
+}: {
+  pitchStyle: PitchStyle
+  label: string
+  isSelected: boolean
+  onPress: () => void
+}) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      accessibilityLabel={label}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.tileWrapper, press.animatedStyle]}
+    >
+      <View style={[styles.tile, isSelected && styles.tileSelected]}>
+        {/* The preview is the real renderer, so it can never drift from the pitch itself. */}
+        <Canvas style={styles.tileCanvas}>
+          <PitchBackground
+            background="full-pitch"
+            width={TILE_WIDTH}
+            height={TILE_HEIGHT}
+            margin={TILE_MARGIN}
+            style={PITCH_STYLES[pitchStyle]}
+          />
+        </Canvas>
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </AnimatedPressable>
+  )
+}
+
+function MarkerStyleTile({
+  markerStyle,
+  label,
+  color,
+  isSelected,
+  onPress,
+}: {
+  markerStyle: MarkerStyle
+  label: string
+  color?: string
+  isSelected: boolean
+  onPress: () => void
+}) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      accessibilityLabel={label}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.markerTileWrapper, press.animatedStyle]}
+    >
+      <View style={[styles.markerTile, isSelected && styles.tileSelected]}>
+        {/* The preview is the real marker renderer, so it can never drift from the pitch. */}
+        <MarkerVisual markerStyle={markerStyle} color={color} />
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </AnimatedPressable>
+  )
+}
+
 function SwatchRow({ selectedColor, onSelect }: { selectedColor?: string; onSelect: (color: string) => void }) {
   return (
     <View style={styles.row}>
-      {LINEUP_MARKER_SWATCHES.map((color) => {
-        const isSelected = color.toLowerCase() === (selectedColor ?? '').toLowerCase()
-        return (
-          <Pressable key={color} accessibilityLabel={color} onPress={() => onSelect(color)} style={styles.swatchWrapper}>
-            <View style={[styles.swatch, { backgroundColor: color }, isSelected && styles.swatchSelected]}>
-              {/* Same contrast rule the marker text uses — a fixed white tick would disappear on
-                  the white swatch, which is exactly the one a coach reverting needs to see. */}
-              {isSelected ? <Check size={18} color={getMarkerTextColor(color)} /> : null}
-            </View>
-          </Pressable>
-        )
-      })}
+      {LINEUP_MARKER_SWATCHES.map((color) => (
+        <Swatch
+          key={color}
+          color={color}
+          isSelected={color.toLowerCase() === (selectedColor ?? '').toLowerCase()}
+          onPress={() => onSelect(color)}
+        />
+      ))}
     </View>
+  )
+}
+
+function Swatch({ color, isSelected, onPress }: { color: string; isSelected: boolean; onPress: () => void }) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      accessibilityLabel={color}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.swatchWrapper, press.animatedStyle]}
+    >
+      <View style={[styles.swatch, { backgroundColor: color }, isSelected && styles.swatchSelected]}>
+        {/* Same contrast rule the marker text uses — a fixed white tick would disappear on
+            the white swatch, which is exactly the one a coach reverting needs to see. */}
+        {isSelected ? <Check size={18} color={getMarkerTextColor(color)} /> : null}
+      </View>
+    </AnimatedPressable>
   )
 }
 

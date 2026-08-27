@@ -1,10 +1,14 @@
 import { Check } from 'lucide-react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { BLOCK_TYPE_OPTIONS, blockTypeColor } from '../../../utils/blockTypes'
 import type { BlockType } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface BlockTypePickerProps {
   visible: boolean
@@ -17,24 +21,48 @@ interface BlockTypePickerProps {
 export function BlockTypePicker({ visible, selected, onSelect, onClose }: BlockTypePickerProps) {
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Block type">
-      {BLOCK_TYPE_OPTIONS.map((option) => {
-        const isSelected = option.value === selected
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => {
-              onSelect(option.value)
-              onClose()
-            }}
-            style={styles.row}
-          >
-            <View style={[styles.dot, { backgroundColor: blockTypeColor(option.value) }]} />
-            <Text style={styles.label}>{option.label}</Text>
-            {isSelected ? <Check size={18} color={colors.primary} /> : null}
-          </Pressable>
-        )
-      })}
+      {BLOCK_TYPE_OPTIONS.map((option) => (
+        <BlockTypeRow
+          key={option.value}
+          label={option.label}
+          color={blockTypeColor(option.value)}
+          isSelected={option.value === selected}
+          onPress={() => {
+            onSelect(option.value)
+            onClose()
+          }}
+        />
+      ))}
     </BottomSheet>
+  )
+}
+
+// Its own component only so each row can hold a press animation of its own — a hook can't be
+// called inside the map above. Renders exactly the Pressable it replaced.
+function BlockTypeRow({
+  label,
+  color,
+  isSelected,
+  onPress,
+}: {
+  label: string
+  color: string
+  isSelected: boolean
+  onPress: () => void
+}) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.row, press.animatedStyle]}
+    >
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={styles.label}>{label}</Text>
+      {isSelected ? <Check size={18} color={colors.primary} /> : null}
+    </AnimatedPressable>
   )
 }
 

@@ -1,9 +1,13 @@
 import { Pressable, StyleSheet, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 import { Check } from 'lucide-react-native'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing } from '../../../theme/theme'
 import { OBJECT_COLOR_SWATCHES } from '../../../utils/canvasUtils'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ColorPickerProps {
   visible: boolean
@@ -20,18 +24,36 @@ export function ColorPicker({ visible, selectedColor, onSelect, onClose }: Color
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Color">
       <View style={styles.row}>
-        {OBJECT_COLOR_SWATCHES.map((color) => {
-          const isSelected = color.toLowerCase() === (selectedColor ?? '').toLowerCase()
-          return (
-            <Pressable key={color} accessibilityLabel={color} onPress={() => onSelect(color)} style={styles.swatchWrapper}>
-              <View style={[styles.swatch, { backgroundColor: color }, isSelected && styles.swatchSelected]}>
-                {isSelected ? <Check size={18} color={colors.textInverse} /> : null}
-              </View>
-            </Pressable>
-          )
-        })}
+        {OBJECT_COLOR_SWATCHES.map((color) => (
+          <Swatch
+            key={color}
+            color={color}
+            isSelected={color.toLowerCase() === (selectedColor ?? '').toLowerCase()}
+            onPress={() => onSelect(color)}
+          />
+        ))}
       </View>
     </BottomSheet>
+  )
+}
+
+// Its own component only so each swatch can hold a press animation of its own — a hook can't be
+// called inside the map above. Renders exactly the Pressable it replaced.
+function Swatch({ color, isSelected, onPress }: { color: string; isSelected: boolean; onPress: () => void }) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      accessibilityLabel={color}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.swatchWrapper, press.animatedStyle]}
+    >
+      <View style={[styles.swatch, { backgroundColor: color }, isSelected && styles.swatchSelected]}>
+        {isSelected ? <Check size={18} color={colors.textInverse} /> : null}
+      </View>
+    </AnimatedPressable>
   )
 }
 
