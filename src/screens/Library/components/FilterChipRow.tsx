@@ -1,8 +1,12 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
+import Animated from 'react-native-reanimated'
 
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, layout, radius, spacing, typography } from '../../../theme/theme'
 import { ACTIVITY_TAG_OPTIONS } from '../../../utils/activityTags'
 import type { ActivityTag } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface FilterChipRowProps {
   selected: ActivityTag | undefined
@@ -28,10 +32,17 @@ export function FilterChipRow({ selected, onSelect }: FilterChipRowProps) {
 }
 
 function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const press = usePressAnimation()
+
   return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.chip, selected && styles.chipSelected, press.animatedStyle]}
+    >
       <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 

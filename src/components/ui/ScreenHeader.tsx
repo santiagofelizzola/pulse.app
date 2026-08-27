@@ -1,8 +1,12 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { colors, typography, spacing, layout } from '../../theme/theme'
+import { usePressAnimation } from './usePressAnimation'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ScreenHeaderProps {
   title: string
@@ -16,13 +20,21 @@ interface ScreenHeaderProps {
 // whether or not a trailing action is present. `onBack` adds the spec's
 // chevron-24 back button (colors.primary) for pushed (non-tab-root) screens.
 export function ScreenHeader({ title, trailing, onBack }: ScreenHeaderProps) {
+  const back = usePressAnimation()
+
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         {onBack ? (
-          <Pressable onPress={onBack} hitSlop={layout.hitSlop} style={styles.backButton}>
+          <AnimatedPressable
+            onPress={onBack}
+            onPressIn={back.onPressIn}
+            onPressOut={back.onPressOut}
+            hitSlop={layout.hitSlop}
+            style={[styles.backButton, back.animatedStyle]}
+          >
             <ChevronLeft size={24} color={colors.primary} />
-          </Pressable>
+          </AnimatedPressable>
         ) : null}
         <Text style={styles.title} numberOfLines={1}>
           {title}
@@ -41,10 +53,18 @@ interface HeaderActionButtonProps {
 // A single trailing header action: touch target layout.touchTarget (44),
 // matching design.md's "up to 2 icon buttons, 24 icon, 44 touch target".
 export function HeaderActionButton({ label, onPress }: HeaderActionButtonProps) {
+  const press = usePressAnimation()
+
   return (
-    <Pressable onPress={onPress} hitSlop={layout.hitSlop} style={styles.actionButton}>
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      hitSlop={layout.hitSlop}
+      style={[styles.actionButton, press.animatedStyle]}
+    >
       <Text style={styles.actionLabel}>{label}</Text>
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 
