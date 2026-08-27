@@ -2,9 +2,11 @@ import { useCallback, useMemo, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Alert, FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { HeaderActionButton, ScreenHeader } from '../../components/ui/ScreenHeader'
 import { SegmentedToggle } from '../../components/ui/SegmentedToggle'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import { sessionRepository } from '../../db/repositories/sessionRepository'
 import { navigate } from '../../navigation/rootNavigation'
@@ -21,6 +23,8 @@ const VIEW_OPTIONS: Array<{ value: LibraryView; label: string }> = [
   { value: 'drills', label: 'Drills' },
   { value: 'sessions', label: 'Sessions' },
 ]
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 export default function LibraryScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
@@ -99,14 +103,22 @@ interface DrillsViewProps {
 }
 
 function DrillsView({ activities, filteredActivities, selectedTag, onSelectTag, onOpenActivity }: DrillsViewProps) {
+  // Called before the early return below — the empty state is conditional, the hook must not be.
+  const cta = usePressAnimation()
+
   if (activities.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.headline}>No activities yet</Text>
         <Text style={styles.supporting}>Save a drill from the canvas to start your library.</Text>
-        <Pressable style={styles.cta} onPress={() => navigate('Canvas')}>
+        <AnimatedPressable
+          style={[styles.cta, cta.animatedStyle]}
+          onPress={() => navigate('Canvas')}
+          onPressIn={cta.onPressIn}
+          onPressOut={cta.onPressOut}
+        >
           <Text style={styles.ctaLabel}>Open canvas</Text>
-        </Pressable>
+        </AnimatedPressable>
       </View>
     )
   }
@@ -140,14 +152,22 @@ interface SessionsViewProps {
 }
 
 function SessionsView({ sessions, onOpenSession, onNewSession, onDeleteSession }: SessionsViewProps) {
+  // Called before the early return below — the empty state is conditional, the hook must not be.
+  const cta = usePressAnimation()
+
   if (sessions.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.headline}>No sessions planned</Text>
         <Text style={styles.supporting}>Build a session from your saved activities.</Text>
-        <Pressable style={styles.cta} onPress={onNewSession}>
+        <AnimatedPressable
+          style={[styles.cta, cta.animatedStyle]}
+          onPress={onNewSession}
+          onPressIn={cta.onPressIn}
+          onPressOut={cta.onPressOut}
+        >
           <Text style={styles.ctaLabel}>New session</Text>
-        </Pressable>
+        </AnimatedPressable>
       </View>
     )
   }

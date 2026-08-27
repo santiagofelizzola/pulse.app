@@ -1,16 +1,21 @@
 import { useCallback, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { Alert, FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { HeaderActionButton, ScreenHeader } from '../../components/ui/ScreenHeader'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
 import { navigate } from '../../navigation/rootNavigation'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import type { Lineup } from '../../types'
 import { LineupListItem } from './components/LineupListItem'
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
 export default function LineupsScreen() {
   const [lineups, setLineups] = useState<Lineup[]>([])
+  const cta = usePressAnimation()
 
   useFocusEffect(
     useCallback(() => {
@@ -45,9 +50,14 @@ export default function LineupsScreen() {
           <Text style={styles.supporting}>
             Set your matchday lineup and save it for the weekend.
           </Text>
-          <Pressable style={styles.cta} onPress={() => navigate('LineupEditor')}>
+          <AnimatedPressable
+            style={[styles.cta, cta.animatedStyle]}
+            onPress={() => navigate('LineupEditor')}
+            onPressIn={cta.onPressIn}
+            onPressOut={cta.onPressOut}
+          >
             <Text style={styles.ctaLabel}>New lineup</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       ) : (
         <FlatList
