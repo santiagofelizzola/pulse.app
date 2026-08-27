@@ -45,6 +45,12 @@ const CANVAS_MARGIN = spacing.lg
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
+// Same helper CanvasScreen keeps for its capture step (it isn't exported there). Duplicated
+// rather than shared so this blocker fix touches only the screen that has the bug.
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+}
+
 export default function LineupEditorScreen() {
   const navigation = useNavigation()
   const { params } = useRoute<Route>()
@@ -278,6 +284,14 @@ export default function LineupEditorScreen() {
         }
         dirtyRef.current = false
         setSaveSheetOpen(false)
+        // Let the sheet's <Modal> actually come down before dismissing the screen underneath it.
+        // Both editors end with this same close-sheet-then-goBack pair, but the canvas reaches it
+        // after a real frame boundary (its rAF wait + thumbnail capture), whereas the repositories
+        // are synchronous inside — so without this, goBack() dispatches in the same batch that
+        // unmounts the Modal, and the screen starts dismissing while its child modal is still
+        // presented. That wedges the presentation hierarchy: navigation stops responding and only
+        // a relaunch recovers it.
+        await waitForNextFrame()
         navigation.goBack()
       } catch {
         setSaveError('Could not save. Try again.')
