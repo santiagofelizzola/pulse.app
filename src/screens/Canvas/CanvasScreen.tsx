@@ -3,9 +3,11 @@ import { useNavigation } from '@react-navigation/native'
 import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import { GestureDetector } from 'react-native-gesture-handler'
 import { LayoutGrid, Redo2, Save, Share2, Undo2, X } from 'lucide-react-native'
+import Animated from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { useShareExport } from '../../export/useShareExport'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import { useCanvasStore } from '../../store/canvasStore'
@@ -28,6 +30,10 @@ import { useCanvasState } from './hooks/useCanvasState'
 
 // Breathing room around the pitch within its flex:1 area, so it never touches the top-bar/tool-tray edges.
 const CANVAS_MARGIN = spacing.lg
+
+// Only the top bar's own icon buttons animate. The top-bar and tool-tray wrappers stay plain
+// Pressables: their onPress is deselectAll, and scaling the whole bar on a stray tap would be wrong.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 function waitForNextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -78,6 +84,13 @@ export default function CanvasScreen() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const canvasBoxRef = useRef<View>(null)
+
+  const closePress = usePressAnimation()
+  const backgroundPress = usePressAnimation()
+  const undoPress = usePressAnimation()
+  const redoPress = usePressAnimation()
+  const sharePress = usePressAnimation()
+  const savePress = usePressAnimation()
 
   // The canvas store is a module-level singleton, so it outlives this screen — reset it on
   // unmount (covers save, discard, and plain back/swipe alike) so the next time a coach opens
@@ -245,36 +258,66 @@ export default function CanvasScreen() {
           the selection toolbar — nested Pressables (the buttons below) still win for their own
           bounds, this only fires for the surrounding chrome. */}
       <Pressable onPress={deselectAll} style={[styles.topBar, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+        <AnimatedPressable
+          onPress={() => navigation.goBack()}
+          onPressIn={closePress.onPressIn}
+          onPressOut={closePress.onPressOut}
+          hitSlop={layout.hitSlop}
+          style={[styles.topBarButton, closePress.animatedStyle]}
+        >
           <X size={22} color={colors.textPrimary} />
-        </Pressable>
+        </AnimatedPressable>
         <Text style={styles.title}>New Activity</Text>
         <View style={styles.topBarActions}>
-          <Pressable onPress={() => setPickerOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+          <AnimatedPressable
+            onPress={() => setPickerOpen(true)}
+            onPressIn={backgroundPress.onPressIn}
+            onPressOut={backgroundPress.onPressOut}
+            hitSlop={layout.hitSlop}
+            style={[styles.topBarButton, backgroundPress.animatedStyle]}
+          >
             <LayoutGrid size={22} color={colors.textPrimary} />
-          </Pressable>
-          <Pressable onPress={undo} disabled={!canUndo} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={undo}
+            onPressIn={undoPress.onPressIn}
+            onPressOut={undoPress.onPressOut}
+            disabled={!canUndo}
+            hitSlop={layout.hitSlop}
+            style={[styles.topBarButton, undoPress.animatedStyle]}
+          >
             <Undo2 size={22} color={canUndo ? colors.textPrimary : colors.textDisabled} />
-          </Pressable>
-          <Pressable onPress={redo} disabled={!canRedo} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={redo}
+            onPressIn={redoPress.onPressIn}
+            onPressOut={redoPress.onPressOut}
+            disabled={!canRedo}
+            hitSlop={layout.hitSlop}
+            style={[styles.topBarButton, redoPress.animatedStyle]}
+          >
             <Redo2 size={22} color={canRedo ? colors.textPrimary : colors.textDisabled} />
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={() => setExportSheetOpen(true)}
+            onPressIn={sharePress.onPressIn}
+            onPressOut={sharePress.onPressOut}
             disabled={isCanvasEmpty}
             hitSlop={layout.hitSlop}
-            style={styles.topBarButton}
+            style={[styles.topBarButton, sharePress.animatedStyle]}
           >
             <Share2 size={22} color={isCanvasEmpty ? colors.textDisabled : colors.textPrimary} />
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={() => setSaveSheetOpen(true)}
+            onPressIn={savePress.onPressIn}
+            onPressOut={savePress.onPressOut}
             disabled={isCanvasEmpty}
             hitSlop={layout.hitSlop}
-            style={styles.topBarButton}
+            style={[styles.topBarButton, savePress.animatedStyle]}
           >
             <Save size={22} color={isCanvasEmpty ? colors.textDisabled : colors.textPrimary} />
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </Pressable>
 

@@ -3,9 +3,11 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { Alert, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { randomUUID } from 'expo-crypto'
 import { LayoutGrid, Palette, Save, Share2, X } from 'lucide-react-native'
+import Animated from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { useShareExport } from '../../export/useShareExport'
 import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
 import { lineupRepository } from '../../db/repositories/lineupRepository'
@@ -41,6 +43,8 @@ type Route = RouteProp<RootStackParamList, 'LineupEditor'>
 // so the lineup pitch reads at the same visual scale as the drawing canvas.
 const CANVAS_MARGIN = spacing.lg
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
 export default function LineupEditorScreen() {
   const navigation = useNavigation()
   const { params } = useRoute<Route>()
@@ -58,6 +62,14 @@ export default function LineupEditorScreen() {
   const [keeperColor, setKeeperColor] = useState<string | undefined>(undefined)
   const [pitchStyle, setPitchStyle] = useState<PitchStyle>(DEFAULT_PITCH_STYLE)
   const [markerStyle, setMarkerStyle] = useState<MarkerStyle>(DEFAULT_MARKER_STYLE)
+
+  const closePress = usePressAnimation()
+  const squadSizePress = usePressAnimation()
+  const formationPress = usePressAnimation()
+  const appearancePress = usePressAnimation()
+  const sharePress = usePressAnimation()
+  const savePress = usePressAnimation()
+  const addSubPress = usePressAnimation()
 
   const [formationPickerOpen, setFormationPickerOpen] = useState(false)
   const [appearanceSheetOpen, setAppearanceSheetOpen] = useState(false)
@@ -320,44 +332,72 @@ export default function LineupEditorScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.topBar, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+        <AnimatedPressable
+          onPress={() => navigation.goBack()}
+          onPressIn={closePress.onPressIn}
+          onPressOut={closePress.onPressOut}
+          hitSlop={layout.hitSlop}
+          style={[styles.topBarButton, closePress.animatedStyle]}
+        >
           <X size={22} color={colors.textPrimary} />
-        </Pressable>
+        </AnimatedPressable>
         <Text style={styles.title} numberOfLines={1}>
           {name || 'New Lineup'}
         </Text>
         <View style={styles.topBarActions}>
           {squadSize ? (
             <>
-              <Pressable onPress={handleChangeSquadSizePress} hitSlop={layout.hitSlop} style={styles.squadSizeButton}>
+              <AnimatedPressable
+                onPress={handleChangeSquadSizePress}
+                onPressIn={squadSizePress.onPressIn}
+                onPressOut={squadSizePress.onPressOut}
+                hitSlop={layout.hitSlop}
+                style={[styles.squadSizeButton, squadSizePress.animatedStyle]}
+              >
                 <Text style={styles.squadSizeLabel}>
                   {squadSize}v{squadSize}
                 </Text>
-              </Pressable>
-              <Pressable onPress={() => setFormationPickerOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => setFormationPickerOpen(true)}
+                onPressIn={formationPress.onPressIn}
+                onPressOut={formationPress.onPressOut}
+                hitSlop={layout.hitSlop}
+                style={[styles.topBarButton, formationPress.animatedStyle]}
+              >
                 <LayoutGrid size={22} color={colors.textPrimary} />
-              </Pressable>
+              </AnimatedPressable>
               {/* No standalone label toggle here: what a marker says is now a three-way choice
                   living with the rest of the look, in the Appearance sheet below. */}
-              <Pressable onPress={() => setAppearanceSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.topBarButton}>
+              <AnimatedPressable
+                onPress={() => setAppearanceSheetOpen(true)}
+                onPressIn={appearancePress.onPressIn}
+                onPressOut={appearancePress.onPressOut}
+                hitSlop={layout.hitSlop}
+                style={[styles.topBarButton, appearancePress.animatedStyle]}
+              >
                 <Palette size={22} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable
+              </AnimatedPressable>
+              <AnimatedPressable
                 onPress={() => setExportSheetOpen(true)}
+                onPressIn={sharePress.onPressIn}
+                onPressOut={sharePress.onPressOut}
                 disabled={isPitchEmpty}
                 hitSlop={layout.hitSlop}
-                style={styles.topBarButton}
+                style={[styles.topBarButton, sharePress.animatedStyle]}
               >
                 <Share2 size={22} color={isPitchEmpty ? colors.textDisabled : colors.textPrimary} />
-              </Pressable>
-              <Pressable
+              </AnimatedPressable>
+              <AnimatedPressable
                 onPress={() => setSaveSheetOpen(true)}
+                onPressIn={savePress.onPressIn}
+                onPressOut={savePress.onPressOut}
                 disabled={isPitchEmpty}
                 hitSlop={layout.hitSlop}
-                style={styles.topBarButton}
+                style={[styles.topBarButton, savePress.animatedStyle]}
               >
                 <Save size={22} color={isPitchEmpty ? colors.textDisabled : colors.textPrimary} />
-              </Pressable>
+              </AnimatedPressable>
             </>
           ) : null}
         </View>
@@ -393,16 +433,16 @@ export default function LineupEditorScreen() {
           <Text style={styles.subsLabel}>Subs</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subsRow}>
             {subs.map((sub) => (
-              <Pressable key={sub.id} onPress={() => handleSubPress(sub)} style={styles.subChip}>
-                <Text style={styles.subChipLabel}>
-                  {sub.name}
-                  {sub.position ? ` · ${sub.position}` : ''}
-                </Text>
-              </Pressable>
+              <SubChip key={sub.id} sub={sub} onPress={() => handleSubPress(sub)} />
             ))}
-            <Pressable onPress={handleAddSubPress} style={[styles.subChip, styles.addSubChip]}>
+            <AnimatedPressable
+              onPress={handleAddSubPress}
+              onPressIn={addSubPress.onPressIn}
+              onPressOut={addSubPress.onPressOut}
+              style={[styles.subChip, styles.addSubChip, addSubPress.animatedStyle]}
+            >
               <Text style={styles.addSubChipLabel}>+ Add sub</Text>
-            </Pressable>
+            </AnimatedPressable>
           </ScrollView>
         </View>
       ) : null}
@@ -475,6 +515,26 @@ export default function LineupEditorScreen() {
         onSave={handleSave}
       />
     </View>
+  )
+}
+
+// Its own component only so each chip can hold a press animation of its own — a hook can't be
+// called inside the subs map above. Renders exactly the Pressable it replaced.
+function SubChip({ sub, onPress }: { sub: SubEntry; onPress: () => void }) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.subChip, press.animatedStyle]}
+    >
+      <Text style={styles.subChipLabel}>
+        {sub.name}
+        {sub.position ? ` · ${sub.position}` : ''}
+      </Text>
+    </AnimatedPressable>
   )
 }
 

@@ -3,10 +3,11 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { ChevronLeft, Info, Share2 } from 'lucide-react-native'
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { useSharedValue } from 'react-native-reanimated'
+import Animated, { useSharedValue } from 'react-native-reanimated'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
 import { HeaderActionButton } from '../../components/ui/ScreenHeader'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { useShareExport } from '../../export/useShareExport'
 import { sessionRepository } from '../../db/repositories/sessionRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
@@ -33,6 +34,8 @@ const SESSION_EXPORT_DETAIL_OPTIONS: Array<{ value: ExportDetail; label: string 
 
 type Route = RouteProp<LibraryStackParamList, 'SessionBuilder'>
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
 export default function SessionBuilderScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
   const { params } = useRoute<Route>()
@@ -56,6 +59,11 @@ export default function SessionBuilderScreen() {
 
   const activeIndex = useSharedValue(-1)
   const dragY = useSharedValue(0)
+
+  const backPress = usePressAnimation()
+  const detailsPress = usePressAnimation()
+  const sharePress = usePressAnimation()
+  const emptyCtaPress = usePressAnimation()
 
   // Only load once per screen instance — the session is created lazily by this same screen's
   // own actions, so re-running on every focus would clobber in-progress local edits.
@@ -230,9 +238,15 @@ export default function SessionBuilderScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop} style={styles.backButton}>
+          <AnimatedPressable
+            onPress={() => navigation.goBack()}
+            onPressIn={backPress.onPressIn}
+            onPressOut={backPress.onPressOut}
+            hitSlop={layout.hitSlop}
+            style={[styles.backButton, backPress.animatedStyle]}
+          >
             <ChevronLeft size={24} color={colors.primary} />
-          </Pressable>
+          </AnimatedPressable>
           <TextInput
             value={name}
             onChangeText={handleNameChange}
@@ -240,17 +254,25 @@ export default function SessionBuilderScreen() {
             placeholderTextColor={colors.textTertiary}
             style={styles.nameInput}
           />
-          <Pressable onPress={() => setDetailsSheetOpen(true)} hitSlop={layout.hitSlop} style={styles.detailsButton}>
+          <AnimatedPressable
+            onPress={() => setDetailsSheetOpen(true)}
+            onPressIn={detailsPress.onPressIn}
+            onPressOut={detailsPress.onPressOut}
+            hitSlop={layout.hitSlop}
+            style={[styles.detailsButton, detailsPress.animatedStyle]}
+          >
             <Info size={22} color={colors.textPrimary} />
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={() => setExportSheetOpen(true)}
+            onPressIn={sharePress.onPressIn}
+            onPressOut={sharePress.onPressOut}
             disabled={blocks.length === 0}
             hitSlop={layout.hitSlop}
-            style={styles.detailsButton}
+            style={[styles.detailsButton, sharePress.animatedStyle]}
           >
             <Share2 size={22} color={blocks.length === 0 ? colors.textDisabled : colors.textPrimary} />
-          </Pressable>
+          </AnimatedPressable>
           <HeaderActionButton label="+" onPress={() => setPickerOpen(true)} />
         </View>
         <Text style={styles.subtitle}>
@@ -262,9 +284,14 @@ export default function SessionBuilderScreen() {
         <View style={styles.emptyState}>
           <Text style={styles.emptyHeadline}>Empty session</Text>
           <Text style={styles.emptySupporting}>Tap + to add your first activity from the library.</Text>
-          <Pressable style={styles.emptyCta} onPress={() => setPickerOpen(true)}>
+          <AnimatedPressable
+            style={[styles.emptyCta, emptyCtaPress.animatedStyle]}
+            onPress={() => setPickerOpen(true)}
+            onPressIn={emptyCtaPress.onPressIn}
+            onPressOut={emptyCtaPress.onPressOut}
+          >
             <Text style={styles.emptyCtaLabel}>Add activity</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list}>

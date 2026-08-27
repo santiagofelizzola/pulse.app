@@ -3,9 +3,11 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Pencil, Share2, Trash2 } from 'lucide-react-native'
 import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
 import { ScreenHeader } from '../../components/ui/ScreenHeader'
+import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
 import { activityRepository } from '../../db/repositories/activityRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
@@ -17,6 +19,8 @@ import type { Activity, ActivityTag } from '../../types'
 import { ActivityEditSheet } from './components/ActivityEditSheet'
 
 type Route = RouteProp<LibraryStackParamList, 'ActivityDetail'>
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 export default function ActivityDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
@@ -30,6 +34,10 @@ export default function ActivityDetailScreen() {
   const [imageFailed, setImageFailed] = useState(false)
   const [exportSheetOpen, setExportSheetOpen] = useState(false)
   const { busy: exporting, share } = useShareExport()
+  // Declared up here, not beside the buttons: this screen returns early while `activity` is null.
+  const sharePress = usePressAnimation()
+  const editPress = usePressAnimation()
+  const deletePress = usePressAnimation()
 
   useFocusEffect(
     useCallback(() => {
@@ -105,23 +113,33 @@ export default function ActivityDetailScreen() {
         onBack={() => navigation.goBack()}
         trailing={
           <View style={styles.headerActions}>
-            <Pressable
+            <AnimatedPressable
               onPress={() => setExportSheetOpen(true)}
+              onPressIn={sharePress.onPressIn}
+              onPressOut={sharePress.onPressOut}
               hitSlop={layout.hitSlop}
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, sharePress.animatedStyle]}
             >
               <Share2 size={20} color={colors.textPrimary} />
-            </Pressable>
-            <Pressable
+            </AnimatedPressable>
+            <AnimatedPressable
               onPress={() => setEditSheetOpen(true)}
+              onPressIn={editPress.onPressIn}
+              onPressOut={editPress.onPressOut}
               hitSlop={layout.hitSlop}
-              style={styles.headerActionButton}
+              style={[styles.headerActionButton, editPress.animatedStyle]}
             >
               <Pencil size={20} color={colors.textPrimary} />
-            </Pressable>
-            <Pressable onPress={handleDelete} hitSlop={layout.hitSlop} style={styles.headerActionButton}>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={handleDelete}
+              onPressIn={deletePress.onPressIn}
+              onPressOut={deletePress.onPressOut}
+              hitSlop={layout.hitSlop}
+              style={[styles.headerActionButton, deletePress.animatedStyle]}
+            >
               <Trash2 size={22} color={colors.error} />
-            </Pressable>
+            </AnimatedPressable>
           </View>
         }
       />
