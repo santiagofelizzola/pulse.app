@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { activityTagLabel } from '../../../utils/activityTags'
 import type { Activity } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ActivityCardProps {
   activity: Activity
@@ -14,9 +18,25 @@ export function ActivityCard({ activity, onPress }: ActivityCardProps) {
   // A stored thumbnail_uri doesn't guarantee the file is still reachable (e.g. a stale path from
   // before migration 005) — fall back to the placeholder instead of leaving a broken image.
   const [imageFailed, setImageFailed] = useState(false)
+  // Reanimated cannot see through a function-form `style` prop (it flattens it to `[fn]` and
+  // drops it), so the pressed background is tracked as state here instead of via Pressable's
+  // ({ pressed }) callback. Same styles, same values — only how `pressed` is obtained changes.
+  const [pressed, setPressed] = useState(false)
+  const press = usePressAnimation()
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => {
+        setPressed(true)
+        press.onPressIn()
+      }}
+      onPressOut={() => {
+        setPressed(false)
+        press.onPressOut()
+      }}
+      style={[styles.card, pressed && styles.cardPressed, press.animatedStyle]}
+    >
       {activity.thumbnailUri && !imageFailed ? (
         <Image
           source={{ uri: activity.thumbnailUri }}
@@ -36,7 +56,7 @@ export function ActivityCard({ activity, onPress }: ActivityCardProps) {
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 
@@ -50,8 +70,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardPressed: {
+    // Scale is no longer set here — usePressAnimation drives it (design.md §10's 0.98) so every
+    // pressable in the app responds identically.
     backgroundColor: colors.surfaceHover,
-    transform: [{ scale: 0.99 }],
   },
   thumbnail: {
     width: '100%',
