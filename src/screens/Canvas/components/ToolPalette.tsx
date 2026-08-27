@@ -1,8 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 import { Circle as CircleIcon, Square, UserRound } from 'lucide-react-native'
 import { Path as SvgPath, Svg, SvgXml } from 'react-native-svg'
 
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { canvas, colors, fonts, layout, radius, shadow, spacing, typography } from '../../../theme/theme'
 import type { CanvasTool, PlaceableToolType } from '../../../store/canvasStore'
 import { CONE_DEFAULT_COLOR, useEquipmentSvgText, type EquipmentAssetKey } from '../../../utils/canvasUtils'
@@ -37,6 +39,8 @@ const ARROW_TOOLS: Array<{ type: ArrowType; label: string }> = [
 ]
 
 const ICON_SIZE = 24
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 // Goal/mini-goal/ball source files are pre-colored to fixed hex (baked-in colors.canvasInk for
 // the goals, native ball colors for the balls) — no currentColor placeholders. When selected,
@@ -150,6 +154,10 @@ function ToolSlot({
   flyout?: ReactNode
   flyoutAlign?: 'start' | 'end'
 }) {
+  // Only the button scales. The flyout anchor is positioned on styles.slot — a sibling of the
+  // button, not a child — so a pressed button never drags its popover with it.
+  const press = usePressAnimation()
+
   return (
     <View style={styles.slot}>
       {flyout ? (
@@ -157,17 +165,45 @@ function ToolSlot({
           {flyout}
         </View>
       ) : null}
-      <Pressable
+      <AnimatedPressable
         accessibilityLabel={accessibilityLabel ?? label}
         onPress={onPress}
-        style={[styles.toolButton, selected && styles.toolButtonSelected]}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        style={[styles.toolButton, selected && styles.toolButtonSelected, press.animatedStyle]}
       >
         {icon}
-      </Pressable>
+      </AnimatedPressable>
       <Text style={[styles.slotLabel, selected && styles.slotLabelSelected]} numberOfLines={1}>
         {label}
       </Text>
     </View>
+  )
+}
+
+// Its own component only so each nested option can hold a press animation of its own — a hook
+// can't be called inside the flyout maps below. Renders exactly the Pressable it replaced.
+function FlyoutButton({
+  accessibilityLabel,
+  onPress,
+  children,
+}: {
+  accessibilityLabel: string
+  onPress: () => void
+  children: ReactNode
+}) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.flyoutButton, press.animatedStyle]}
+    >
+      {children}
+    </AnimatedPressable>
   )
 }
 
@@ -199,16 +235,15 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
             openFlyout === 'player' ? (
               <View style={styles.flyoutRow}>
                 {PLAYER_PRESETS.map((preset) => (
-                  <Pressable
+                  <FlyoutButton
                     key={preset.tool}
                     accessibilityLabel={preset.label || 'Blank player marker'}
                     onPress={() => selectAndClose({ kind: 'place', type: preset.tool })}
-                    style={styles.flyoutButton}
                   >
                     <View style={[styles.markerPreview, isPlaceToolActive(activeTool, preset.tool) && styles.markerPreviewActive]}>
                       <Text style={styles.markerPreviewLabel}>{preset.label}</Text>
                     </View>
-                  </Pressable>
+                  </FlyoutButton>
                 ))}
               </View>
             ) : null
@@ -249,15 +284,14 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
             openFlyout === 'ball' ? (
               <View style={styles.flyoutRow}>
                 {BALL_OPTIONS.map((option) => (
-                  <Pressable
+                  <FlyoutButton
                     key={option.tool}
                     accessibilityLabel={option.accessibilityLabel}
                     onPress={() => selectAndClose({ kind: 'place', type: option.tool })}
-                    style={styles.flyoutButton}
                   >
                     <SvgToolIcon assetKey={option.assetKey} />
                     <Text style={styles.flyoutLabel}>{option.label}</Text>
-                  </Pressable>
+                  </FlyoutButton>
                 ))}
               </View>
             ) : null
@@ -275,15 +309,14 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
             openFlyout === 'zone' ? (
               <View style={styles.flyoutRow}>
                 {ZONE_OPTIONS.map((option) => (
-                  <Pressable
+                  <FlyoutButton
                     key={option.tool}
                     accessibilityLabel={option.label}
                     onPress={() => selectAndClose({ kind: 'place', type: option.tool })}
-                    style={styles.flyoutButton}
                   >
                     <ZoneToolIcon tool={option.tool} selected={isPlaceToolActive(activeTool, option.tool)} />
                     <Text style={styles.flyoutLabel}>{option.label}</Text>
-                  </Pressable>
+                  </FlyoutButton>
                 ))}
               </View>
             ) : null
