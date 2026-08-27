@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSunken,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     textAlignVertical: 'top',
     ...typography.body,
     color: colors.textPrimary,

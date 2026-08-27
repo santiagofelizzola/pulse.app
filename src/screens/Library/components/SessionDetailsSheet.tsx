@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSunken,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     ...typography.body,
     color: colors.textPrimary,
     marginBottom: spacing.lg,
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
   multilineInput: {
     height: undefined,
     minHeight: 96,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   saveButton: {
     height: 48,
