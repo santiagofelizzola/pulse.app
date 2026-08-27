@@ -62,7 +62,6 @@ export function PositionEditSheet({ visible, position, onClose, onSave }: Positi
             maxLength={4}
             autoCapitalize="characters"
             style={styles.input}
-            autoFocus
           />
         </View>
 
@@ -105,7 +104,8 @@ export function PositionEditSheet({ visible, position, onClose, onSave }: Positi
 
 const styles = StyleSheet.create({
   // Position and Number share a line: both are 1–4 characters, and stacking them would push the
-  // Save button under the keyboard on a small phone.
+  // Save button under the keyboard on a small phone. (That constraint is weaker now the sheet no
+  // longer autofocuses — the keyboard is down on open — but the layout is deliberately unchanged.)
   row: {
     flexDirection: 'row',
     gap: spacing.md,
