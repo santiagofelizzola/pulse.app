@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface CoachingPointsEditorProps {
   visible: boolean
@@ -15,6 +19,7 @@ interface CoachingPointsEditorProps {
 // each line becomes a bullet when the hybrid card renders the expanded list.
 export function CoachingPointsEditor({ visible, initialValue, onClose, onSave }: CoachingPointsEditorProps) {
   const [text, setText] = useState(initialValue)
+  const savePress = usePressAnimation()
 
   useEffect(() => {
     if (visible) setText(initialValue)
@@ -32,15 +37,17 @@ export function CoachingPointsEditor({ visible, initialValue, onClose, onSave }:
         multiline
         autoFocus
       />
-      <Pressable
+      <AnimatedPressable
         onPress={() => {
           onSave(text.trim())
           onClose()
         }}
-        style={styles.saveButton}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, savePress.animatedStyle]}
       >
         <Text style={styles.saveLabel}>Save</Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }

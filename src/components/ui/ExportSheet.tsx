@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import type { ExportDetail } from '../../utils/exportUtils'
 import { BottomSheet } from './BottomSheet'
 import { SegmentedToggle } from './SegmentedToggle'
+import { usePressAnimation } from './usePressAnimation'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ExportSheetProps {
   visible: boolean
@@ -43,6 +47,7 @@ export function ExportSheet({
   onClose,
 }: ExportSheetProps) {
   const [name, setName] = useState(nameField?.value ?? '')
+  const ctaPress = usePressAnimation()
 
   useEffect(() => {
     if (visible) setName(nameField?.value ?? '')
@@ -80,14 +85,16 @@ export function ExportSheet({
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable
+      <AnimatedPressable
         onPress={onShare}
+        onPressIn={ctaPress.onPressIn}
+        onPressOut={ctaPress.onPressOut}
         disabled={busy}
-        style={[styles.cta, busy && styles.ctaDisabled]}
+        style={[styles.cta, busy && styles.ctaDisabled, ctaPress.animatedStyle]}
         hitSlop={layout.hitSlop}
       >
         <Text style={[styles.ctaLabel, busy && styles.ctaLabelDisabled]}>{busy ? 'Preparing...' : 'Share'}</Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }

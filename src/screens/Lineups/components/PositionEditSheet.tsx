@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import type { LineupPosition } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface PositionEditSheetProps {
   visible: boolean
@@ -30,6 +34,8 @@ export function PositionEditSheet({ visible, position, onClose, onSave }: Positi
       setName(position.label)
     }
   }, [visible, position])
+
+  const savePress = usePressAnimation()
 
   const handleSave = () => {
     const parsedNumber = parseInt(shirtNumber, 10)
@@ -85,9 +91,14 @@ export function PositionEditSheet({ visible, position, onClose, onSave }: Positi
         style={styles.input}
       />
 
-      <Pressable onPress={handleSave} style={styles.saveButton}>
+      <AnimatedPressable
+        onPress={handleSave}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, savePress.animatedStyle]}
+      >
         <Text style={styles.saveLabel}>Save</Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }

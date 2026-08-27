@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import type { SubEntry } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface SubEditSheetProps {
   visible: boolean
@@ -28,6 +32,8 @@ export function SubEditSheet({ visible, sub, onClose, onSave, onRemove }: SubEdi
 
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0
+  const savePress = usePressAnimation()
+  const removePress = usePressAnimation()
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title={sub ? 'Edit sub' : 'Add sub'}>
@@ -52,27 +58,31 @@ export function SubEditSheet({ visible, sub, onClose, onSave, onRemove }: SubEdi
         style={styles.input}
       />
 
-      <Pressable
+      <AnimatedPressable
         disabled={!canSave}
         onPress={() => {
           onSave({ name: trimmedName, position: position.trim() || undefined })
           onClose()
         }}
-        style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, !canSave && styles.saveButtonDisabled, savePress.animatedStyle]}
       >
         <Text style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}>Save</Text>
-      </Pressable>
+      </AnimatedPressable>
 
       {sub ? (
-        <Pressable
+        <AnimatedPressable
           onPress={() => {
             onRemove()
             onClose()
           }}
-          style={styles.removeButton}
+          onPressIn={removePress.onPressIn}
+          onPressOut={removePress.onPressOut}
+          style={[styles.removeButton, removePress.animatedStyle]}
         >
           <Text style={styles.removeLabel}>Remove sub</Text>
-        </Pressable>
+        </AnimatedPressable>
       ) : null}
     </BottomSheet>
   )

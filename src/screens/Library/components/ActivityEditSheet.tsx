@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
 import { ACTIVITY_TAG_OPTIONS } from '../../../utils/activityTags'
 import type { Activity, ActivityTag } from '../../../types'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ActivityEditSheetProps {
   visible: boolean
@@ -51,6 +55,8 @@ export function ActivityEditSheet({ visible, activity, saving, error, onClose, o
   const parsedPlayerCount = parseInt(playerCountText, 10)
   const playerCount = Number.isFinite(parsedPlayerCount) && parsedPlayerCount > 0 ? parsedPlayerCount : undefined
 
+  const savePress = usePressAnimation()
+
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Edit drill">
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
@@ -68,13 +74,12 @@ export function ActivityEditSheet({ visible, activity, saving, error, onClose, o
           {ACTIVITY_TAG_OPTIONS.map((option) => {
             const selected = tag === option.value
             return (
-              <Pressable
+              <TagChip
                 key={option.value}
+                label={option.label}
+                selected={selected}
                 onPress={() => setTag(selected ? undefined : option.value)}
-                style={[styles.chip, selected && styles.chipSelected]}
-              >
-                <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{option.label}</Text>
-              </Pressable>
+              />
             )
           })}
         </ScrollView>
@@ -123,7 +128,7 @@ export function ActivityEditSheet({ visible, activity, saving, error, onClose, o
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Pressable
+        <AnimatedPressable
           disabled={!canSave}
           onPress={() =>
             onSave({
@@ -135,16 +140,35 @@ export function ActivityEditSheet({ visible, activity, saving, error, onClose, o
               playerActions: playerActions.trim() || undefined,
             })
           }
-          style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+          onPressIn={savePress.onPressIn}
+          onPressOut={savePress.onPressOut}
+          style={[styles.saveButton, !canSave && styles.saveButtonDisabled, savePress.animatedStyle]}
         >
           {saving ? (
             <ActivityIndicator color={colors.onPrimary} />
           ) : (
             <Text style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}>Save</Text>
           )}
-        </Pressable>
+        </AnimatedPressable>
       </ScrollView>
     </BottomSheet>
+  )
+}
+
+// Its own component only so each chip can hold a press animation of its own — a hook can't be
+// called inside the map above. Renders exactly the Pressable it replaced.
+function TagChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.chip, selected && styles.chipSelected, press.animatedStyle]}
+    >
+      <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
+    </AnimatedPressable>
   )
 }
 

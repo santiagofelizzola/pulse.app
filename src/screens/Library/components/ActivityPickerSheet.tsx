@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react-native'
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { activityRepository } from '../../../db/repositories/activityRepository'
 import { colors, layout, radius, spacing, typography } from '../../../theme/theme'
 import { activityTagLabel } from '../../../utils/activityTags'
 import type { Activity, ActivityTag } from '../../../types'
 import { FilterChipRow } from './FilterChipRow'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface ActivityPickerSheetProps {
   visible: boolean
@@ -48,6 +52,8 @@ export function ActivityPickerSheet({ visible, onClose, onSelect }: ActivityPick
     onSelect(activities.filter((activity) => selectedIds.has(activity.id)))
   }
 
+  const confirmPress = usePressAnimation()
+
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Add activities">
       {/* FilterChipRow carries its own screenPaddingX inset — cancel the sheet's own padding
@@ -63,45 +69,78 @@ export function ActivityPickerSheet({ visible, onClose, onSelect }: ActivityPick
           keyExtractor={(item) => item.id}
           style={styles.list}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const selected = selectedIds.has(item.id)
-            return (
-              <Pressable onPress={() => toggleSelected(item.id)} style={styles.row}>
-                {item.thumbnailUri && !failedThumbnailIds.has(item.id) ? (
-                  <Image
-                    source={{ uri: item.thumbnailUri }}
-                    style={styles.thumbnail}
-                    onError={() => setFailedThumbnailIds((prev) => new Set(prev).add(item.id))}
-                  />
-                ) : (
-                  <View style={styles.thumbnailPlaceholder} />
-                )}
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  {item.tag ? <Text style={styles.rowTag}>{activityTagLabel(item.tag)}</Text> : null}
-                </View>
-                <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                  {selected ? <Check size={14} color={colors.onPrimary} /> : null}
-                </View>
-              </Pressable>
-            )
-          }}
+          renderItem={({ item }) => (
+            <ActivityRow
+              activity={item}
+              selected={selectedIds.has(item.id)}
+              thumbnailFailed={failedThumbnailIds.has(item.id)}
+              onThumbnailError={() => setFailedThumbnailIds((prev) => new Set(prev).add(item.id))}
+              onPress={() => toggleSelected(item.id)}
+            />
+          )}
         />
       )}
-      <Pressable
+      <AnimatedPressable
         disabled={selectedIds.size === 0}
         onPress={handleConfirm}
-        style={[styles.confirmButton, selectedIds.size === 0 && styles.confirmButtonDisabled]}
+        onPressIn={confirmPress.onPressIn}
+        onPressOut={confirmPress.onPressOut}
+        style={[
+          styles.confirmButton,
+          selectedIds.size === 0 && styles.confirmButtonDisabled,
+          confirmPress.animatedStyle,
+        ]}
       >
         <Text style={[styles.confirmLabel, selectedIds.size === 0 && styles.confirmLabelDisabled]}>
           {selectedIds.size === 0
             ? 'Add activities'
             : `Add ${selectedIds.size} ${selectedIds.size === 1 ? 'activity' : 'activities'}`}
         </Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
+  )
+}
+
+// Its own component only so each row can hold a press animation of its own — a hook can't be
+// called inside FlatList's renderItem, which is a render prop rather than a component. Renders
+// exactly the Pressable it replaced.
+function ActivityRow({
+  activity,
+  selected,
+  thumbnailFailed,
+  onThumbnailError,
+  onPress,
+}: {
+  activity: Activity
+  selected: boolean
+  thumbnailFailed: boolean
+  onThumbnailError: () => void
+  onPress: () => void
+}) {
+  const press = usePressAnimation()
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.row, press.animatedStyle]}
+    >
+      {activity.thumbnailUri && !thumbnailFailed ? (
+        <Image source={{ uri: activity.thumbnailUri }} style={styles.thumbnail} onError={onThumbnailError} />
+      ) : (
+        <View style={styles.thumbnailPlaceholder} />
+      )}
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {activity.name}
+        </Text>
+        {activity.tag ? <Text style={styles.rowTag}>{activityTagLabel(activity.tag)}</Text> : null}
+      </View>
+      <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+        {selected ? <Check size={14} color={colors.onPrimary} /> : null}
+      </View>
+    </AnimatedPressable>
   )
 }
 

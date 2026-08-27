@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface DurationEditorProps {
   visible: boolean
@@ -22,6 +26,7 @@ export function DurationEditor({ visible, initialValue, onClose, onSave }: Durat
 
   const parsed = parseInt(text, 10)
   const minutes = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+  const savePress = usePressAnimation()
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Block duration">
@@ -35,15 +40,17 @@ export function DurationEditor({ visible, initialValue, onClose, onSave }: Durat
         style={styles.input}
         autoFocus
       />
-      <Pressable
+      <AnimatedPressable
         onPress={() => {
           onSave(minutes)
           onClose()
         }}
-        style={styles.saveButton}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, savePress.animatedStyle]}
       >
         <Text style={styles.saveLabel}>Save</Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }

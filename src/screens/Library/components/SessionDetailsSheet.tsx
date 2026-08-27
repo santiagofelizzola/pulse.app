@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface SessionDetailsSheetProps {
   visible: boolean
@@ -38,6 +42,7 @@ export function SessionDetailsSheet({
 
   const parsed = parseInt(playerCountText, 10)
   const playerCount = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+  const savePress = usePressAnimation()
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Session details">
@@ -72,7 +77,7 @@ export function SessionDetailsSheet({
         textAlignVertical="top"
       />
 
-      <Pressable
+      <AnimatedPressable
         onPress={() => {
           onSave({
             focus: focus.trim() || undefined,
@@ -81,10 +86,12 @@ export function SessionDetailsSheet({
           })
           onClose()
         }}
-        style={styles.saveButton}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, savePress.animatedStyle]}
       >
         <Text style={styles.saveLabel}>Save</Text>
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }

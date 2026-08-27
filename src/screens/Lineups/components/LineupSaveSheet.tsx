@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import Animated from 'react-native-reanimated'
 
 import { BottomSheet } from '../../../components/ui/BottomSheet'
+import { usePressAnimation } from '../../../components/ui/usePressAnimation'
 import { colors, radius, spacing, typography } from '../../../theme/theme'
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 interface LineupSaveSheetProps {
   visible: boolean
@@ -24,6 +28,7 @@ export function LineupSaveSheet({ visible, initialName, saving, error, onClose, 
 
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0 && !saving
+  const savePress = usePressAnimation()
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Save lineup">
@@ -39,17 +44,19 @@ export function LineupSaveSheet({ visible, initialName, saving, error, onClose, 
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable
+      <AnimatedPressable
         disabled={!canSave}
         onPress={() => onSave(trimmedName)}
-        style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+        onPressIn={savePress.onPressIn}
+        onPressOut={savePress.onPressOut}
+        style={[styles.saveButton, !canSave && styles.saveButtonDisabled, savePress.animatedStyle]}
       >
         {saving ? (
           <ActivityIndicator color={colors.onPrimary} />
         ) : (
           <Text style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}>Save</Text>
         )}
-      </Pressable>
+      </AnimatedPressable>
     </BottomSheet>
   )
 }
