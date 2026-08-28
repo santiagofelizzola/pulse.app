@@ -230,27 +230,80 @@ async function addActivity(
   return toSessionActivity(row)
 }
 
+function currentPositionOrder(db: SQLiteDatabase, sessionId: string): string[] {
+  const rows = db.getAllSync<{ id: string }>(
+    'SELECT id FROM session_activities WHERE session_id = ? ORDER BY position ASC',
+    sessionId
+  )
+  return rows.map((row) => row.id)
+}
+
+// Writes positions 0..n-1 onto `orderedIds`, which must be every row in the session.
+//
+// UNIQUE(session_id, position) is checked after each statement and SQLite has no deferred form
+// for a non-FK constraint, so a row can't take a position a sibling still holds. Every renumbering
+// therefore runs in two phases: park all the rows above the highest position currently in use,
+// then write the final positions into the range that just emptied. Callers must already be inside
+// a transaction, so the parked range is never visible to a reader and a failure rolls back whole.
+function writePositions(db: SQLiteDatabase, sessionId: string, orderedIds: string[]): void {
+  const { maxPosition } = db.getFirstSync<{ maxPosition: number | null }>(
+    'SELECT MAX(position) AS maxPosition FROM session_activities WHERE session_id = ?',
+    sessionId
+  )!
+  const parkBase = (maxPosition ?? -1) + 1
+
+  orderedIds.forEach((id, index) => {
+    db.runSync(
+      'UPDATE session_activities SET position = ? WHERE id = ? AND session_id = ?',
+      parkBase + index,
+      id,
+      sessionId
+    )
+  })
+  orderedIds.forEach((id, index) => {
+    db.runSync(
+      'UPDATE session_activities SET position = ? WHERE id = ? AND session_id = ?',
+      index,
+      id,
+      sessionId
+    )
+  })
+}
+
 async function reorderActivities(sessionId: string, orderedSessionActivityIds: string[]): Promise<void> {
   const db = getDatabase()
   db.withTransactionSync(() => {
-    orderedSessionActivityIds.forEach((sessionActivityId, index) => {
-      db.runSync(
-        'UPDATE session_activities SET position = ? WHERE id = ? AND session_id = ?',
-        index,
-        sessionActivityId,
-        sessionId
-      )
-    })
+    // The stored rows are the authority on what the session contains, not the caller's list: the
+    // screen reorders optimistically from state that can be a beat behind. Ids it doesn't know
+    // about keep their relative order and land after the ones it does, and ids it names that no
+    // longer exist are dropped — so every surviving row still gets exactly one of 0..n-1.
+    const existing = currentPositionOrder(db, sessionId)
+    const existingIds = new Set(existing)
+    const requested: string[] = []
+    const claimed = new Set<string>()
+    for (const id of orderedSessionActivityIds) {
+      if (existingIds.has(id) && !claimed.has(id)) {
+        claimed.add(id)
+        requested.push(id)
+      }
+    }
+    writePositions(db, sessionId, [...requested, ...existing.filter((id) => !claimed.has(id))])
   })
 }
 
 async function removeActivity(sessionId: string, sessionActivityId: string): Promise<void> {
   const db = getDatabase()
-  db.runSync(
-    'DELETE FROM session_activities WHERE id = ? AND session_id = ?',
-    sessionActivityId,
-    sessionId
-  )
+  db.withTransactionSync(() => {
+    db.runSync(
+      'DELETE FROM session_activities WHERE id = ? AND session_id = ?',
+      sessionActivityId,
+      sessionId
+    )
+    // Compact the survivors back onto 0..n-1 in the same transaction. A gap would never break a
+    // read (they're only ever ordered by, never indexed by), but it would leave `position` out of
+    // step with the block's index, and addActivity's MAX(position)+1 drifting past the block count.
+    writePositions(db, sessionId, currentPositionOrder(db, sessionId))
+  })
   await recalculateTotalDuration(db, sessionId)
 }
 
