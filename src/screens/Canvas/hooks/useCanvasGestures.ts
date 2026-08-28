@@ -201,6 +201,10 @@ export function useCanvasGestures({
   // onBegin regardless of what gets hit. onTouchesUp uses it to measure tap-vs-drag travel
   // independent of the Pan recognizer's own activation state — see onTouchesUp below for why.
   const touchDownPoint = useSharedValue({ x: 0, y: 0 })
+  // Latches true once a gesture's travel has cleared TAP_SLOP, i.e. once it has stopped being a
+  // possible tap and become a real drag. Reset every onBegin. See onUpdate, which paints nothing
+  // until this flips.
+  const dragQualified = useSharedValue(false)
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const targetScaleRef = useSharedValue(1)
   const interactionSeq = useSharedValue(0)
@@ -273,6 +277,7 @@ export function useCanvasGestures({
     .minDistance(0)
     .onBegin((event) => {
       touchDownPoint.value = { x: event.x, y: event.y }
+      dragQualified.value = false
 
       // Every gesture lifecycle gets its own seq so a commit's deferred interaction-clear (see
       // the useEffect above) can tell "the commit I'm waiting on landed" apart from "a new
@@ -429,6 +434,24 @@ export function useCanvasGestures({
       }
     })
     .onUpdate((event) => {
+      // Nothing moves until the gesture clears TAP_SLOP — the same threshold, measured on the
+      // same quantity (translation, which is what onEnd gates its commits on), so the live
+      // preview and the commit can never disagree about whether this was a tap or a drag.
+      // Without this, a sub-slop drag painted live from the first pixel and was then resolved as
+      // a tap by onTouchesUp, which resets to idle: the object followed the finger and snapped
+      // straight back to where it started.
+      //
+      // Deliberately NOT .minDistance(TAP_SLOP) on the Pan: RNGH rebases translation to zero at
+      // activation (iOS RNPanHandler's setTranslation:0, Android PanGestureHandler.activate ->
+      // resetProgress), so an activation distance would leave onEnd measuring travel from the
+      // activation point rather than touch-down — opening a wider band where a drag neither
+      // commits nor selects. Latched rather than re-tested per frame so a drag that wanders back
+      // inside the slop keeps tracking the finger instead of freezing.
+      if (!dragQualified.value) {
+        if (Math.hypot(event.translationX, event.translationY) < TAP_SLOP) return
+        dragQualified.value = true
+      }
+
       const current = interaction.value
       if (current.mode === 'move') {
         interaction.value = { ...current, dx: event.translationX, dy: event.translationY }
