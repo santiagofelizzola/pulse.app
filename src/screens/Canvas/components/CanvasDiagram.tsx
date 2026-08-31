@@ -68,8 +68,8 @@ export function CanvasDiagram({
   const playerObjects = objects.filter(isPlayerMarker)
   const otherObjects = objects.filter((object): object is Exclude<PlacedObject, PlayerMarker> => !isPlayerMarker(object))
 
-  // Arrows and equipment paint in one shared stacking order (design.md's "Layering" intent) so
-  // bring-to-front on a line can actually rise above equipment, not just reorder among lines.
+  // Arrows and equipment paint in one shared stacking order (design.md's "Layering" intent) so a
+  // line genuinely rises above equipment, not just above other lines.
   // Player markers are excluded — they always render via the RN overlay below, on top of
   // everything in the Skia canvas regardless of zIndex, which is an unrelated, pre-existing
   // constraint of how their text labels are drawn.

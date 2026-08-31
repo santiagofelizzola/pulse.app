@@ -41,9 +41,11 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 // Everything about how a lineup LOOKS, in one sheet: the pitch surface, the marker shape and what
 // it says, then the marker colors.
-// Marker colors use the same preset-swatch mechanism as the canvas's ColorPicker, extended to two
+// Marker colors use the same preset-swatch mechanism as the canvas's color tool, extended to two
 // independent targets — every outfield marker shares teamColor, the goalkeeper's marker uses
-// keeperColor instead (see LineupPosition.isKeeper).
+// keeperColor instead (see LineupPosition.isKeeper). The swatch LIST is deliberately its own
+// (LINEUP_MARKER_SWATCHES); the canvas widened to CANVAS_COLOR_SWATCHES without dragging lineups
+// along with it.
 export function LineupAppearanceSheet({
   visible,
   pitchStyle,

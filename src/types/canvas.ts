@@ -17,7 +17,7 @@ export interface BaseCanvasObject {
   rotation: number
   scale: number
   // Paint order relative to every other object AND arrow (a single shared counter, not just
-  // within this array) — lets "bring to front" move an object above arrows and vice versa.
+  // within this array) — so a newly placed object lands above existing arrows and vice versa.
   // See canvasStore.ts's nextZIndex.
   zIndex: number
 }
@@ -26,7 +26,10 @@ export interface PlayerMarker extends BaseCanvasObject {
   type: 'player'
   label: string        // '' = blank, or 1–2 chars
   teamIndex: 0 | 1
-  color?: string        // fill color; defaults to colors.surface (white) when unset
+  // Fill color. Newly placed markers always carry one (PLAYER_DEFAULT_COLOR — black); it stays
+  // optional because markers saved before that default existed have no `color` and must keep
+  // rendering white, which is PlayerMarkerOverlay's `?? colors.surface` fallback.
+  color?: string
 }
 
 export interface Cone extends BaseCanvasObject { type: 'cone'; color?: string }

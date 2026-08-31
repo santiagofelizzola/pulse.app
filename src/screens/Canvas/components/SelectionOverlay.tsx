@@ -1,7 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated'
-import { BringToFront, Copy, Palette, Trash2 } from 'lucide-react-native'
+import { Copy, Trash2 } from 'lucide-react-native'
 
 import { canvas, colors, layout, motion, radius, shadow, spacing } from '../../../theme/theme'
 import {
@@ -20,18 +20,17 @@ interface SelectionOverlayProps {
   canvasSize: { width: number; height: number }
   hidden: boolean
   onDuplicate: () => void
-  // Present only for objects whose type carries a `color` field (cone, disc) — the toolbar's
-  // deferred "color" action from the Session 3 selection spec (design.md §7).
-  onColor?: () => void
-  onBringToFront: () => void
   onDelete: () => void
 }
 
 const TOOLBAR_ICON_SIZE = 22
 const HANDLE_SIZE = 20
-const TOOLBAR_ESTIMATED_WIDTH = 3 * layout.touchTarget
+// Duplicate + delete. The toolbar's other two actions are gone: "color" became an armed tool in the
+// palette (ToolPalette's Color slot), and "bring to front" was removed outright — the shared
+// object/arrow stacking counter it wrote to is untouched, only the button is gone.
+const TOOLBAR_ESTIMATED_WIDTH = 2 * layout.touchTarget
 
-export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, onColor, onBringToFront, onDelete }: SelectionOverlayProps) {
+export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, onDelete }: SelectionOverlayProps) {
   const [toolbarWidth, setToolbarWidth] = useState(TOOLBAR_ESTIMATED_WIDTH)
 
   const handleToolbarLayout = useCallback((event: LayoutChangeEvent) => {
@@ -110,14 +109,6 @@ export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, on
         <View style={styles.toolbar} onLayout={handleToolbarLayout} pointerEvents="box-none">
           <Pressable accessibilityLabel="Duplicate" onPress={onDuplicate} hitSlop={layout.hitSlop} style={styles.toolbarButton}>
             <Copy size={TOOLBAR_ICON_SIZE} color={colors.textInverse} />
-          </Pressable>
-          {onColor ? (
-            <Pressable accessibilityLabel="Color" onPress={onColor} hitSlop={layout.hitSlop} style={styles.toolbarButton}>
-              <Palette size={TOOLBAR_ICON_SIZE} color={colors.textInverse} />
-            </Pressable>
-          ) : null}
-          <Pressable accessibilityLabel="Bring to front" onPress={onBringToFront} hitSlop={layout.hitSlop} style={styles.toolbarButton}>
-            <BringToFront size={TOOLBAR_ICON_SIZE} color={colors.textInverse} />
           </Pressable>
           <Pressable accessibilityLabel="Delete" onPress={onDelete} hitSlop={layout.hitSlop} style={styles.toolbarButton}>
             <Trash2 size={TOOLBAR_ICON_SIZE} color={colors.error} />

@@ -15,6 +15,10 @@ function sameTool(a: CanvasTool, b: CanvasTool): boolean {
   if (a.kind !== b.kind) return false
   if (a.kind === 'place' && b.kind === 'place') return a.type === b.type
   if (a.kind === 'draw' && b.kind === 'draw') return a.type === b.type
+  // The chosen color is part of the color tool's identity, so picking a DIFFERENT swatch while
+  // color mode is armed re-arms with that color, while tapping the armed swatch again disarms —
+  // exactly the toggle every other tool already has, with no separate dismiss gesture.
+  if (a.kind === 'color' && b.kind === 'color') return a.color === b.color
   return true
 }
 
@@ -45,7 +49,6 @@ export function useCanvasState() {
   const addArrow = useCanvasStore((state) => state.addArrow)
   const moveArrow = useCanvasStore((state) => state.moveArrow)
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected)
-  const bringSelectedToFront = useCanvasStore((state) => state.bringSelectedToFront)
   const deleteSelected = useCanvasStore((state) => state.deleteSelected)
   const undo = useCanvasStore((state) => state.undo)
   const redo = useCanvasStore((state) => state.redo)
@@ -53,7 +56,9 @@ export function useCanvasState() {
   const reset = useCanvasStore((state) => state.reset)
 
   // Tapping the already-armed tool again disarms it back to select (toggle) — same UX as
-  // Session 2's placement tools, extended to the new arrow-drawing tools.
+  // Session 2's placement tools, extended to the arrow-drawing tools and to the color tool.
+  // The color tool leans on this hardest: unlike arrows and shapes it never auto-disarms after
+  // use, so re-tapping its armed swatch (or arming any other tool) is the ONLY way out of it.
   const selectTool = useCallback(
     (next: CanvasTool) => {
       setTool(sameTool(tool, next) ? SELECT_TOOL : next)
@@ -115,7 +120,6 @@ export function useCanvasState() {
     selectItem,
     deselectAll,
     duplicateSelected,
-    bringSelectedToFront,
     deleteSelected,
     undo,
     redo,

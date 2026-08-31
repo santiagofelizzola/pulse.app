@@ -6,7 +6,7 @@ import { Skia, type SkSVG } from '@shopify/react-native-skia'
 
 import { canvas, colors } from '../theme/theme'
 import type { PlaceableToolType } from '../store/canvasStore'
-import type { PlacedObject } from '../types'
+import type { Cone, Disc, PlacedObject, PlayerMarker } from '../types'
 
 // Hit-testing / placement
 
@@ -26,8 +26,17 @@ export const SCALE_MAX = 2.5
 // one currently-colorable item, so it gets a color worth seeing by default.)
 export const CONE_DEFAULT_COLOR = '#EE7110'
 
-// Preset swatches for the selection toolbar's color action (cone/disc, player/lineup markers).
-// A small fixed set rather than a full color wheel, per design.md's "simple color picker" allowance.
+// Default fill for a newly placed player marker. Set EXPLICITLY on the object at creation rather
+// than by changing PlayerMarkerOverlay's `color ?? colors.surface` fallback: the fallback is what
+// every already-saved drill's markers render from, so moving it would silently repaint every drill
+// in the library — and leave each one disagreeing with its own stored thumbnail PNG, which was
+// captured white. Saved drills keep their white markers; only new ones come out black.
+export const PLAYER_DEFAULT_COLOR = colors.canvasInk
+
+// The original six-swatch set. Now LINEUP-ONLY: it exists solely as the base for
+// LINEUP_MARKER_SWATCHES below. The drawing canvas moved to the wider CANVAS_COLOR_SWATCHES when
+// color became an armed tool; the lineup Appearance sheet deliberately kept this narrower list
+// rather than inheriting that change as a side effect.
 export const OBJECT_COLOR_SWATCHES = [
   CONE_DEFAULT_COLOR,
   colors.primary,
@@ -37,12 +46,41 @@ export const OBJECT_COLOR_SWATCHES = [
   colors.canvasInk,
 ] as const
 
+// Preset swatches for the canvas color TOOL (cone, disc, player marker). Still a fixed set with no
+// arbitrary color entry — per design.md's "preset swatches only" rule — just a wider one: enough
+// range for two teams, keepers, and neutrals. Ordered to wrap into two rows of five.
+//
+// White is here even though OBJECT_COLOR_SWATCHES excluded it ("white would be an invisible object
+// on a white pitch"). That reasoning was about tinting cones and discs; now that a player marker
+// defaults to black, white is the natural opposing-team fill, and a marker always carries a 2px
+// canvasInk border, so it never disappears into the pitch.
+export const CANVAS_COLOR_SWATCHES = [
+  colors.canvasInk,
+  colors.surface,
+  colors.error,
+  colors.info,
+  colors.warning,
+  colors.primary,
+  CONE_DEFAULT_COLOR,
+  colors.block.game,
+  colors.block.transition,
+  colors.textSecondary,
+] as const
+
 // The same swatches led by an explicit white, for the lineup's team/keeper marker colors. White is
 // what an uncolored marker already renders as (MarkerVisual's `color ?? colors.surface`), but the
 // picker can only ever SET a color — without this swatch a coach who tried a kit color had no way
 // back to the default. Lineup-only on purpose: on the canvas these swatches tint cones and discs
 // against a white pitch, where white would be an invisible object rather than a useful choice.
 export const LINEUP_MARKER_SWATCHES = [colors.surface, ...OBJECT_COLOR_SWATCHES] as const
+
+// The three PlacedObject types carrying a `color` field. Single source of truth for "can this be
+// recolored", shared by the store's setObjectColor guard and CanvasScreen's color-mode tap router,
+// so the two can't drift. Balls, goals and zones are deliberately NOT colorable and gain no color
+// field; arrows aren't PlacedObjects at all and stay canvasInk.
+export function isColorableObject(object: PlacedObject): object is Cone | Disc | PlayerMarker {
+  return object.type === 'cone' || object.type === 'disc' || object.type === 'player'
+}
 
 // Picks readable label text for an arbitrary marker fill color — a light fill (or none, i.e. the
 // default white marker) keeps the usual dark ink text; a dark fill (e.g. the canvasInk or error
@@ -449,11 +487,11 @@ export function createDefaultObject(
 
   switch (tool) {
     case 'player-blank':
-      return { ...base, type: 'player', label: '', teamIndex: 0 }
+      return { ...base, type: 'player', label: '', teamIndex: 0, color: PLAYER_DEFAULT_COLOR }
     case 'player-gk':
-      return { ...base, type: 'player', label: 'GK', teamIndex: 0 }
+      return { ...base, type: 'player', label: 'GK', teamIndex: 0, color: PLAYER_DEFAULT_COLOR }
     case 'player-co':
-      return { ...base, type: 'player', label: 'Co', teamIndex: 0 }
+      return { ...base, type: 'player', label: 'Co', teamIndex: 0, color: PLAYER_DEFAULT_COLOR }
     case 'cone':
       return { ...base, type: 'cone', color: CONE_DEFAULT_COLOR }
     case 'goal':

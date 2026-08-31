@@ -13,6 +13,7 @@ import { activityRepository } from '../../db/repositories/activityRepository'
 import { useCanvasStore } from '../../store/canvasStore'
 import { colors, layout, spacing, typography } from '../../theme/theme'
 import { exportActivity } from '../../utils/exportUtils'
+import { isColorableObject } from '../../utils/canvasUtils'
 import { captureCanvasThumbnail } from '../../utils/thumbnailUtils'
 import type { PlaceableToolType, ShapeToolType } from '../../store/canvasStore'
 import type { ActivityTag, CanvasBackground, CanvasData } from '../../types'
@@ -20,7 +21,6 @@ import { ArrowDrawPreview } from './components/ArrowPath'
 import { BackgroundPicker } from './components/BackgroundPicker'
 import { CanvasDiagram } from './components/CanvasDiagram'
 import { ShapePlacePreview } from './components/CanvasObject'
-import { ColorPicker } from './components/ColorPicker'
 import { getPitchAspectRatio } from './components/PitchBackground'
 import { SaveSheet } from './components/SaveSheet'
 import { SelectionOverlay } from './components/SelectionOverlay'
@@ -64,7 +64,6 @@ export default function CanvasScreen() {
     selectItem,
     deselectAll,
     duplicateSelected,
-    bringSelectedToFront,
     deleteSelected,
     undo,
     redo,
@@ -74,7 +73,6 @@ export default function CanvasScreen() {
 
   const [areaSize, setAreaSize] = useState({ width: 0, height: 0 })
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [saveSheetOpen, setSaveSheetOpen] = useState(false)
   const [exportSheetOpen, setExportSheetOpen] = useState(false)
   // Kept apart from whatever the coach later types in SaveSheet: exporting must not have library
@@ -169,6 +167,29 @@ export default function CanvasScreen() {
     [selectBackground]
   )
 
+  // The canvas's single tap resolver, handed to the gesture hook as its `onSelect`. The hook
+  // already calls that prop with the tapped item's id (or null for an empty-canvas tap) for any
+  // touch that stays under TAP_SLOP, so routing color mode through here means the gesture layer —
+  // and the committed-snapshot handoff it guards — needs no change at all.
+  //
+  // While color mode is armed, tap NEVER selects: setTool already cleared any live selection when
+  // the tool was armed, and nothing here can create a new one, so the two meanings of "tap" can't
+  // collide. Dragging an object still moves it, which the hook handles regardless of armed tool.
+  const handleCanvasTap = useCallback(
+    (id: string | null) => {
+      if (tool.kind !== 'color') {
+        selectItem(id)
+        return
+      }
+      // Anything that isn't a colorable object — an arrow, a ball, a goal, empty grass — is a
+      // deliberate no-op: no recolor, no selection, no placement, and the tool stays armed.
+      if (!id) return
+      const target = objects.find((object) => object.id === id)
+      if (target && isColorableObject(target)) setObjectColor(target.id, tool.color)
+    },
+    [tool, objects, selectItem, setObjectColor]
+  )
+
   const { pan, interaction, committed, isInteracting } = useCanvasGestures({
     objects,
     arrows,
@@ -176,7 +197,7 @@ export default function CanvasScreen() {
     tool,
     selected,
     onPlace: handlePlace,
-    onSelect: selectItem,
+    onSelect: handleCanvasTap,
     onMoveObject: moveObject,
     onRotateObject: rotateObject,
     onScaleObject: scaleObject,
@@ -231,23 +252,6 @@ export default function CanvasScreen() {
         () => exportActivity({ name: exportName.trim(), canvasData }, { detail: 'simple' })
       ),
     [share, exportName, canvasData]
-  )
-
-  // Cone, Disc, and PlayerMarker are the PlacedObject types carrying a `color` field — gate the
-  // toolbar's color action to them (see design.md §7's "Per-object color (cone & disc)",
-  // extended to player markers).
-  const colorableSelected =
-    selected?.kind === 'object' &&
-    (selected.object.type === 'cone' || selected.object.type === 'disc' || selected.object.type === 'player')
-      ? selected.object
-      : null
-
-  const handleSelectColor = useCallback(
-    (color: string) => {
-      if (colorableSelected) setObjectColor(colorableSelected.id, color)
-      setColorPickerOpen(false)
-    },
-    [colorableSelected, setObjectColor]
   )
 
   const isCanvasEmpty = objects.length === 0 && arrows.length === 0
@@ -353,8 +357,6 @@ export default function CanvasScreen() {
               canvasSize={canvasSize}
               hidden={isInteracting}
               onDuplicate={duplicateSelected}
-              onColor={colorableSelected ? () => setColorPickerOpen(true) : undefined}
-              onBringToFront={bringSelectedToFront}
               onDelete={deleteSelected}
             />
           </View>
@@ -370,13 +372,6 @@ export default function CanvasScreen() {
         selected={background}
         onSelect={handleSelectBackground}
         onClose={() => setPickerOpen(false)}
-      />
-
-      <ColorPicker
-        visible={colorPickerOpen}
-        selectedColor={colorableSelected?.color}
-        onSelect={handleSelectColor}
-        onClose={() => setColorPickerOpen(false)}
       />
 
       <ExportSheet

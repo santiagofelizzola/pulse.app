@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 import { create } from 'zustand'
 
-import { createDefaultObject, MIN_ZONE_SIZE_PX } from '../utils/canvasUtils'
+import { createDefaultObject, isColorableObject, MIN_ZONE_SIZE_PX } from '../utils/canvasUtils'
 import type { Arrow, ArrowType, CanvasBackground, PlacedObject } from '../types'
 
 // Pole/Ladder/Flag/Disc are intentionally absent — dropped from the palette for a tighter
@@ -18,10 +18,14 @@ export type PlaceableToolType =
   | 'shape-rect'
   | 'shape-circle'
 
+// 'color' is a MODE, not a per-object edit: armed from the tool palette with a chosen color, it
+// stays armed and repaints every colorable object the coach taps (see CanvasScreen's tap router).
+// It never becomes the default for newly placed objects — createDefaultObject is untouched by it.
 export type CanvasTool =
   | { kind: 'select' }
   | { kind: 'place'; type: PlaceableToolType }
   | { kind: 'draw'; type: ArrowType }
+  | { kind: 'color'; color: string }
 
 const SELECT_TOOL: CanvasTool = { kind: 'select' }
 
@@ -55,9 +59,12 @@ function clamp01(value: number): number {
 }
 
 // Objects and arrows paint in a single shared stacking order (design.md's "Layering" intent),
-// even though they live in two separate arrays — so "bring to front" on a line can actually
-// place it above equipment, not just reorder it among other lines. Computed from current state
-// rather than a persisted counter, so it needs no separate undo/redo bookkeeping of its own.
+// even though they live in two separate arrays — so a newly drawn line genuinely lands above
+// existing equipment, not merely above other lines. Computed from current state rather than a
+// persisted counter, so it needs no separate undo/redo bookkeeping of its own.
+//
+// The counter and every stored zIndex stay exactly as they were; what was removed is only the
+// selection toolbar's "bring to front" ACTION, which used to re-stamp a selected item with this.
 function nextZIndex(state: Pick<CanvasStoreState, 'objects' | 'arrows'>): number {
   const max = Math.max(0, ...state.objects.map((o) => o.zIndex ?? 0), ...state.arrows.map((a) => a.zIndex ?? 0))
   return max + 1
@@ -106,7 +113,6 @@ interface CanvasStoreState {
   moveArrow: (id: string, dx: number, dy: number) => void
 
   duplicateSelected: () => void
-  bringSelectedToFront: () => void
   deleteSelected: () => void
 
   undo: () => void
@@ -119,7 +125,7 @@ interface CanvasStoreState {
 const initialSnapshot: CanvasSnapshot = { background: 'blank', objects: [], arrows: [] }
 
 export const useCanvasStore = create<CanvasStoreState>((set, get) => {
-  // Every canvas-data mutation (place/move/rotate/scale/draw/duplicate/bring-to-front/delete/
+  // Every canvas-data mutation (place/move/rotate/scale/resize/recolor/draw/duplicate/delete/
   // background change) funnels through here so undo/redo has one single source of truth.
   // Ephemeral UI state (tool, selection) is NOT part of history — only canvas *data* is.
   function commit(patch: Partial<CanvasSnapshot>) {
@@ -235,13 +241,16 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       })
     },
 
+    // Bails before commit() on both no-op cases — a non-colorable (or missing) target, and a target
+    // that already carries this exact color. Every commit pushes a history entry, and the color
+    // TOOL fires this on every tap it lands on, so without these guards a stray tap on a ball, or a
+    // re-tap on an already-red marker, would each cost the coach an undo press that changes nothing.
     setObjectColor: (id, color) => {
+      const target = get().objects.find((object) => object.id === id)
+      if (!target || !isColorableObject(target) || target.color === color) return
+
       commit({
-        objects: get().objects.map((object) =>
-          object.id === id && (object.type === 'cone' || object.type === 'disc' || object.type === 'player')
-            ? { ...object, color }
-            : object
-        ),
+        objects: get().objects.map((object) => (object.id === id ? { ...object, color } : object)),
       })
     },
 
@@ -294,23 +303,6 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
         }
         commit({ arrows: [...state.arrows, copy] })
         set({ selectedId: copy.id })
-      }
-    },
-
-    bringSelectedToFront: () => {
-      const state = get()
-      const selected = getSelectedItem(state)
-      if (!selected) return
-
-      const zIndex = nextZIndex(state)
-      if (selected.kind === 'object') {
-        commit({
-          objects: state.objects.map((object) => (object.id === selected.object.id ? { ...object, zIndex } : object)),
-        })
-      } else {
-        commit({
-          arrows: state.arrows.map((arrow) => (arrow.id === selected.arrow.id ? { ...arrow, zIndex } : arrow)),
-        })
       }
     },
 
