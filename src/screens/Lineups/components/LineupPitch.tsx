@@ -64,7 +64,7 @@ export function LineupPitch({
             markerStyle={resolvedMarkerStyle}
             color={isKeeperPosition(position) ? keeperColor : teamColor}
             captionColor={style.captionColor}
-            captionGlowColor={style.captionGlowColor}
+            captionOutlineColor={style.captionOutlineColor}
             onMove={onMove}
             onPress={onPress}
           />

@@ -92,8 +92,10 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  // captionGlow is a glow, not a directional shadow: zero offset, small blur.
-  marker: { diameter: 30, border: 2, captionGlow: { radius: 5, offset: { width: 0, height: 0 } } },
+  // captionOutline is the stroke around the player-name letterforms, drawn beneath the fill.
+  // This is the TOTAL stroke width: it is centered on the glyph outline, so the fill covers the
+  // inner half and the visible outline is half this value. See LineupMarker.
+  marker: { diameter: 30, border: 2, captionOutline: { width: 2 } },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
   // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the
@@ -103,11 +105,13 @@ export const canvas = {
     ink: '#16181A',
     turfDark: '#357007',
     turfLight: '#4F980C',
-    // Caption glow: a soft halo behind the player-name text, always the opposite tone to the
-    // caption itself, so the letters separate from whatever they sit on (mowing stripes, a
-    // marking line). Kept low-alpha — separation, not a drop shadow.
-    glowLight: 'rgba(255, 255, 255, 0.80)',
-    glowDark: 'rgba(22, 24, 26, 0.65)',
+    // Caption outline: the stroke around the player-name letterforms, always the opposite tone
+    // to the caption itself, so the letters separate from whatever they sit on (mowing stripes,
+    // a marking line). Near-opaque, unlike the soft halo this replaced — a halo is spread over
+    // several pixels and can afford to be faint, but a 1pt stroke at low alpha just lets the
+    // stripe seam read straight through it.
+    outlineLight: '#FFFFFF',
+    outlineDark: '#16181A',
     // Mowing bands drawn across the pitch height. Odd, so the top and bottom bands share a shade
     // (symmetric) and one band sits centered on the halfway line.
     bandCount: 11,

@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { StyleSheet, Text } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
+import Svg, { Text as SvgText } from 'react-native-svg'
 
 import { canvas, colors, fonts, layout, spacing, typography } from '../../../theme/theme'
 import type { LineupPosition, MarkerStyle } from '../../../types'
@@ -20,8 +21,9 @@ interface LineupMarkerProps {
   // Name-caption color, supplied by the lineup's pitch style — a dark caption is unreadable on a
   // dark pitch surface. Defaults to the original dark text for the white pitch.
   captionColor?: string
-  // Halo behind that caption, also from the pitch style — opposite tone to captionColor.
-  captionGlowColor?: string
+  // Outline stroked around that caption's letterforms, also from the pitch style — opposite tone
+  // to captionColor.
+  captionOutlineColor?: string
   // Both omitted renders a STATIC marker with no gesture recognizers attached — the export
   // path, which needs the marker to look identical but must never be draggable.
   onMove?: (id: string, x: number, y: number) => void
@@ -29,6 +31,46 @@ interface LineupMarkerProps {
 }
 
 const CONTAINER_WIDTH = 72
+
+// The caption gets its OWN width, wider than the container it sits in. SVG text does not
+// ellipsize — it clips at the viewport edge with no "…" — so the box has to hold a real first
+// name rather than the 72pt the marker shape occupies (~14 characters at the caption's 13px
+// SemiBold). The container is deliberately not widened to match: its width IS the marker's touch
+// target, and stretching that would overlap the hit areas of neighbouring players in a back four.
+// Both platforms leave the overflow visible (Android's ReactViewGroup sets clipChildren = false),
+// and neither delivers touches to a child outside its parent's bounds, so the wider caption draws
+// in full without becoming tappable.
+const CAPTION_WIDTH = 110
+
+const CAPTION_FONT_SIZE = typography.caption.fontSize
+const CAPTION_LINE_HEIGHT = typography.caption.lineHeight
+
+// Poppins' own vertical metrics as em fractions, read from the .ttf's hhea table (ascender 1050,
+// descender -350, lineGap 100, against a 1000-unit em). An SVG <Text> is placed by its BASELINE,
+// whereas the RN <Text> this replaced was placed by its line box, so the conversion has to be
+// done here — half-leading plus ascent is the same placement RN derives for a Text with an
+// explicit lineHeight, which is what keeps the caption on the pixels it has always sat on.
+const FONT_ASCENT_EM = 1.05
+const FONT_LINE_EM = 1.5
+const CAPTION_BASELINE =
+  (CAPTION_LINE_HEIGHT - FONT_LINE_EM * CAPTION_FONT_SIZE) / 2 + FONT_ASCENT_EM * CAPTION_FONT_SIZE
+
+// The SVG viewport is a hard clip, so the box is padded by the full stroke width on every side —
+// without it the outline on a descender (the y in "Ryan") is sliced off at the bottom edge. The
+// same amount comes back off marginTop below, so nothing moves.
+const CAPTION_OUTLINE_WIDTH = canvas.marker.captionOutline.width
+const CAPTION_PADDING = CAPTION_OUTLINE_WIDTH
+const CAPTION_HEIGHT = CAPTION_LINE_HEIGHT + CAPTION_PADDING * 2
+
+// Shared by the outline and fill copies below so the two can never drift a subpixel apart.
+const CAPTION_TEXT_PROPS = {
+  x: CAPTION_WIDTH / 2,
+  y: CAPTION_PADDING + CAPTION_BASELINE,
+  textAnchor: 'middle',
+  fontFamily: fonts.semibold,
+  fontSize: CAPTION_FONT_SIZE,
+} as const
+
 // Boundary between "tap" and "drag" — a real drag travels well past this; a tap's natural finger
 // jitter shouldn't. Shared by the Tap gesture's maxDistance and the Pan gesture's minDistance so
 // the two partition cleanly with no dead zone between them.
@@ -53,7 +95,7 @@ export function LineupMarker({
   markerStyle,
   color,
   captionColor,
-  captionGlowColor,
+  captionOutlineColor,
   onMove,
   onPress,
 }: LineupMarkerProps) {
@@ -125,18 +167,26 @@ export function LineupMarker({
   const marker = (
     <Animated.View style={[styles.container, style]}>
       <MarkerVisual markerStyle={markerStyle} color={color} text={text} />
-      <Text
-        style={[
-          styles.label,
-          {
-            color: captionColor ?? colors.textPrimary,
-            textShadowColor: captionGlowColor ?? canvas.pitch.glowLight,
-          },
-        ]}
-        numberOfLines={1}
-      >
-        {position.label}
-      </Text>
+      <Svg width={CAPTION_WIDTH} height={CAPTION_HEIGHT} style={styles.caption}>
+        {/* Drawn twice on purpose. react-native-svg has no paint-order support, so a stroke on a
+            single <Text> is centered on the glyph outline AND painted over the fill — it eats
+            half the letter weight inward and thickens the shape into mush at 13px. The copy
+            underneath is stroke-only at double the intended width; once the filled copy lands on
+            top, only the outer half of that stroke survives, which is a true outline around the
+            letterforms rather than a halo behind them. */}
+        <SvgText
+          {...CAPTION_TEXT_PROPS}
+          fill="none"
+          stroke={captionOutlineColor ?? canvas.pitch.outlineLight}
+          strokeWidth={CAPTION_OUTLINE_WIDTH * 2}
+          strokeLinejoin="round"
+        >
+          {position.label}
+        </SvgText>
+        <SvgText {...CAPTION_TEXT_PROPS} fill={captionColor ?? colors.textPrimary}>
+          {position.label}
+        </SvgText>
+      </Svg>
     </Animated.View>
   )
 
@@ -151,14 +201,9 @@ const styles = StyleSheet.create({
     width: CONTAINER_WIDTH,
     alignItems: 'center',
   },
-  label: {
-    ...typography.caption,
-    fontFamily: fonts.semibold,
-    // Zero offset + a soft blur = a halo around the glyphs rather than a directional drop shadow.
-    // Only the color varies per pitch style (set inline above).
-    textShadowOffset: canvas.marker.captionGlow.offset,
-    textShadowRadius: canvas.marker.captionGlow.radius,
-    marginTop: spacing.xxs,
-    textAlign: 'center',
+  caption: {
+    // The stroke padding baked into CAPTION_HEIGHT comes straight back off the top margin, so the
+    // glyphs land exactly where the RN <Text> put them.
+    marginTop: spacing.xxs - CAPTION_PADDING,
   },
 })
