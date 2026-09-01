@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Path, Rect, Skia, type SkPath } from '@shopify/react-native-skia'
+import { Path, Rect, Skia, type SkPath, type SkPathBuilder } from '@shopify/react-native-skia'
 
 import { canvas } from '../../../theme/theme'
 import type { CanvasBackground } from '../../../types'
@@ -92,13 +92,13 @@ function boxArc(cx: number, cy: number, r: number, chordY: number): SkPath {
   const dx = Math.sqrt(Math.max(r * r - dy * dy, 0))
   const angleR = (Math.atan2(dy, dx) * 180) / Math.PI
   const angleL = (Math.atan2(dy, -dx) * 180) / Math.PI
-  const path = Skia.Path.Make()
-  path.addArc({ x: cx - r, y: cy - r, width: r * 2, height: r * 2 }, angleR, angleL - angleR)
-  return path
+  return Skia.PathBuilder.Make()
+    .addArc({ x: cx - r, y: cy - r, width: r * 2, height: r * 2 }, angleR, angleL - angleR)
+    .detach()
 }
 
 function addGoalBox(
-  path: SkPath,
+  builder: SkPathBuilder,
   cx: number,
   edgeY: number,
   playWidth: number,
@@ -117,10 +117,10 @@ function addGoalBox(
   const spotY = facing === 'down' ? edgeY + spotOffset : edgeY - spotOffset
   const chordY = facing === 'down' ? edgeY + boxD : edgeY - boxD
 
-  path.addRect({ x: cx - boxW / 2, y: boxY, width: boxW, height: boxD })
-  path.addRect({ x: cx - sixW / 2, y: sixY, width: sixW, height: sixD })
-  path.addCircle(cx, spotY, SPOT_RADIUS)
-  path.addPath(boxArc(cx, spotY, arcR, chordY))
+  builder.addRect({ x: cx - boxW / 2, y: boxY, width: boxW, height: boxD })
+  builder.addRect({ x: cx - sixW / 2, y: sixY, width: sixW, height: sixD })
+  builder.addCircle(cx, spotY, SPOT_RADIUS)
+  builder.addPath(boxArc(cx, spotY, arcR, chordY))
 }
 
 function buildPitchPath(background: CanvasBackground, width: number, height: number, margin: number): SkPath | null {
@@ -135,17 +135,17 @@ function buildPitchPath(background: CanvasBackground, width: number, height: num
   const cx = left + playWidth / 2
   const circleR = playWidth * CENTER_CIRCLE_RADIUS_FRAC
 
-  const path = Skia.Path.Make()
-  path.addRect({ x: left, y: top, width: playWidth, height: playHeight })
+  const builder = Skia.PathBuilder.Make()
+  builder.addRect({ x: left, y: top, width: playWidth, height: playHeight })
 
   if (background === 'full-pitch') {
     const midY = top + playHeight / 2
-    path.moveTo(left, midY)
-    path.lineTo(right, midY)
-    path.addCircle(cx, midY, circleR)
-    path.addCircle(cx, midY, SPOT_RADIUS)
-    addGoalBox(path, cx, top, playWidth, 'down')
-    addGoalBox(path, cx, bottom, playWidth, 'up')
+    builder.moveTo(left, midY)
+    builder.lineTo(right, midY)
+    builder.addCircle(cx, midY, circleR)
+    builder.addCircle(cx, midY, SPOT_RADIUS)
+    addGoalBox(builder, cx, top, playWidth, 'down')
+    addGoalBox(builder, cx, bottom, playWidth, 'up')
 
     const corners: Array<[number, number, number]> = [
       [left, top, 0],
@@ -154,7 +154,7 @@ function buildPitchPath(background: CanvasBackground, width: number, height: num
       [left, bottom, 270],
     ]
     corners.forEach(([x, y, startAngle]) => {
-      path.addArc(
+      builder.addArc(
         { x: x - CORNER_ARC_RADIUS, y: y - CORNER_ARC_RADIUS, width: CORNER_ARC_RADIUS * 2, height: CORNER_ARC_RADIUS * 2 },
         startAngle,
         90
@@ -164,28 +164,28 @@ function buildPitchPath(background: CanvasBackground, width: number, height: num
     // Halfway line sits at the bottom edge, with the center circle's own center resting exactly
     // on it — so only the top (attacking-half) semicircle is drawn, bulging up into the frame,
     // plus the center spot that a plain halfway-line-with-arc treatment otherwise lacks.
-    path.moveTo(left, bottom)
-    path.lineTo(right, bottom)
-    path.addArc({ x: cx - circleR, y: bottom - circleR, width: circleR * 2, height: circleR * 2 }, 180, 180)
-    path.addCircle(cx, bottom, SPOT_RADIUS)
-    addGoalBox(path, cx, top, playWidth, 'down')
+    builder.moveTo(left, bottom)
+    builder.lineTo(right, bottom)
+    builder.addArc({ x: cx - circleR, y: bottom - circleR, width: circleR * 2, height: circleR * 2 }, 180, 180)
+    builder.addCircle(cx, bottom, SPOT_RADIUS)
+    addGoalBox(builder, cx, top, playWidth, 'down')
   } else if (background === 'final-third') {
-    addGoalBox(path, cx, top, playWidth, 'down')
+    addGoalBox(builder, cx, top, playWidth, 'down')
   } else if (background === 'middle-third') {
     const midY = top + playHeight / 2
-    path.moveTo(left, midY)
-    path.lineTo(right, midY)
-    path.addCircle(cx, midY, circleR)
-    path.addCircle(cx, midY, SPOT_RADIUS)
+    builder.moveTo(left, midY)
+    builder.lineTo(right, midY)
+    builder.addCircle(cx, midY, circleR)
+    builder.addCircle(cx, midY, SPOT_RADIUS)
   } else if (background === 'penalty-box') {
     // Zoomed crop: the box fills most of the frame's width (rather than the pitch-width-relative
     // fraction used elsewhere) with everything else — six-yard box, spot, arc — scaled off of
     // that same width via addGoalBox, so the box keeps realistic proportions instead of the
     // previous hand-rolled numbers that sized depth off playHeight and left a mis-placed arc.
-    addGoalBox(path, cx, top, playWidth, 'down', PENALTY_BOX_ZOOM_WIDTH_FRAC)
+    addGoalBox(builder, cx, top, playWidth, 'down', PENALTY_BOX_ZOOM_WIDTH_FRAC)
   }
 
-  return path
+  return builder.detach()
 }
 
 // Half-pixel bleed on each overlay band. Bands land on fractional y offsets (height rarely divides
