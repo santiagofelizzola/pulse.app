@@ -258,7 +258,9 @@ The default container. Quiet by design.
 | Radius | `radius.lg` (16) |
 | Padding | `spacing.lg` (16); roomy cards `spacing.xl` (24) |
 | Gap between stacked cards | `spacing.md`–`spacing.lg` |
-| Pressed (if tappable) | background `colors.surfaceHover`, scale `0.99` |
+| Pressed (if tappable) | background `colors.surfaceHover`, scale `0.98` |
+
+> The pressed scale is **0.98**, the single value in §10. This row previously said `0.99`; the two specs disagreed and the code has only ever had one constant (`usePressAnimation`), so the Card row was corrected to match rather than the other way round.
 
 **Session builder hybrid card** (special):
 
@@ -316,7 +318,7 @@ Outline alternative (use on white-heavy screens): transparent fill, 1px `colors.
 
 ### Bottom Sheet
 
-Used for the canvas background picker and contextual pickers (e.g. object color, line-type selection). The Training tab does **not** open a sheet — it opens the Canvas modal directly.
+Used for the canvas background picker, the save/edit sheets, and the lineup Appearance sheet. The Training tab does **not** open a sheet — it opens the Canvas modal directly. Canvas *tool* options — player presets, ball variants, zone shapes, color swatches — are **not** sheets: they are popovers anchored to their own tool button in the tray (§7).
 
 | Property | Value |
 |---|---|
@@ -330,6 +332,8 @@ Used for the canvas background picker and contextual pickers (e.g. object color,
 | Detents | content-height by default; large pickers use a ~90% detent |
 
 Dismiss on backdrop tap and downward drag. Spring animation (§10).
+
+**A sheet that can outgrow the screen caps its own content.** `BottomSheet` does not scroll; the sheet inside it wraps its content in a `ScrollView` with a `maxHeight`. Two sheets have now independently needed this — Edit activity (cap 480) and Save activity (cap 280) — and the caps differ because they are budgeted against the shortest supported phone: a sheet that **autofocuses** a field has the keyboard up from the moment it opens and gets far less room than one that doesn't. A sheet that autofocuses also needs `keyboardShouldPersistTaps="handled"`, or the first tap on any control is swallowed by the keyboard dismissal instead of reaching it. **If a third sheet needs this treatment, the pattern belongs in `BottomSheet` itself** rather than a third hand-tuned copy.
 
 ### Tab Bar
 
@@ -388,11 +392,11 @@ The canvas screen is **one continuous light surface** (`colors.background`), not
 ### Tool tray (below the canvas)
 
 - Sits in normal layout flow **below** the pitch, not a floating overlay: `colors.background`, 1px `colors.borderSubtle` top border, no pill/tray fill, no shadow.
-- Laid out as a **wrapping grid** (not a single scrollable row) so every tool is visible at once on a portrait screen — as many rows as needed.
+- Laid out as **two fixed rows**, not a scrollable strip, so every tool is visible at once on a portrait screen. Row 1: Player, Cone, Goal, Mini-goal, Ball. Row 2: Zone, the four arrow types, Color. Two rows is a budget, not a coincidence — a third would cost the pitch roughly 60px of height.
 - Tool button: 44×44 touch target, icon 24, `colors.textPrimary` inactive.
 - **Selected tool**: `colors.primaryTint` circular fill behind the icon, icon `colors.primary` (same selected treatment as a filter chip — see §6).
-- Gap between tools `spacing.sm`.
-- The player tool's blank/GK/Co presets open as a small light popover (`colors.surface`, 1px `colors.border`, `shadow.md`) above the tool grid — the one legitimate floating-shadow use here, since it's a transient overlay, not the tray itself.
+- Gap between tools `spacing.sm`. No `hitSlop` is added: the buttons are already at the 44px minimum, and expanding them across an 8px gap would overlap neighbors' touch areas.
+- **Four tools open a popover** rather than placing directly: Player (blank/GK/Co), Ball (BW/colored), Zone (rect/circle) and Color (the swatch grid). Each is a small light overlay (`colors.surface`, 1px `colors.border`, `shadow.md`) anchored above its own button — the one legitimate floating-shadow use here, since it's transient, not the tray itself. The popover pins its **left or right edge** to its button (whichever screen edge the button is nearer) and grows inward, rather than centering and risking overflow. The color popover is the one that wraps: ten swatches at five per row.
 
 ### Background picker
 
@@ -404,11 +408,13 @@ Opens as a bottom sheet (§6) showing the six `CanvasBackground` options — ful
 |---|---|
 | Diameter | 30 (default) |
 | Shape | circle, `radius.pill` |
-| Fill | `colors.surface` (white) by default; a per-object `color` overrides it (same swatch set as equipment, below) |
+| Fill | **`colors.canvasInk` (black)** for a newly placed marker, stamped onto the object at creation. A marker with no stored `color` — every one saved before this default existed — still renders `colors.surface` (white). See the note below |
 | Border | 2px `colors.canvasInk` (or team color) |
-| Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`. Ink is `colors.canvasInk` on a light fill and flips to white on a dark one — perceived brightness, not a full contrast ratio, which is enough for a fixed swatch set. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
+| Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`. Ink is `colors.canvasInk` on a light fill and flips to `colors.textInverse` on a dark one — perceived brightness (ITU-R BT.601), not a full contrast ratio, which is enough for a fixed swatch set. The flip is unchanged, but the *common* case inverted with the black default: a new marker now carries white ink, and a legacy uncolored (white) one keeps dark ink. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
 | Palette presets | The players tool offers three quick options: a plain (blank-label) marker, and two labelled presets — **GK** and **Co** — which simply place a marker with that `label` value. All other labels are entered ad-hoc. No non-circle player shapes (triangle/square/etc. belong to equipment/zones, not markers). |
 | Min touch target | 44 (use transparent hit area padding around the 30px visual) |
+
+> **The black default does not repaint existing drills.** It is set explicitly on the object at creation, *not* by moving the renderer's `color ?? colors.surface` fallback. Moving the fallback would silently reflow every marker in the library to black — and leave each saved drill disagreeing with its own stored thumbnail PNG, which was captured white. So `color` stays optional on `PlayerMarker`: old drills keep their white markers, only new ones come out black.
 
 ### Equipment icons
 
@@ -416,7 +422,14 @@ Placeable set: **cone, goal, mini-goal, and two balls** (black-and-white, colore
 
 - **Assets are pre-cleaned and pre-colored offline**, not recolored at runtime. DOCTYPE and CSS are stripped so Skia's parser — which does no CSS cascade resolution — reads them natively, and each file already carries the right ink for a white pitch. The one runtime substitution is a literal text replace for `currentColor`, which Skia won't resolve on its own.
 - **Sizing is calibrated per asset, not declared.** Each source file has a different viewBox and a different amount of empty margin around its ink, so identical width numbers render at visibly different sizes. The stored width for each asset is a *measured* value correcting for that, so equal numbers produce equal footprints. The rule: everything renders clearly smaller than the 30px player marker **except the full goal**, which stays large by design.
-- **Per-object color.** `Cone`, `Disc` and `PlayerMarker` each carry an optional `color`, edited from the selection toolbar. **Preset swatches only** — no arbitrary color entry. The **disc** is drawn as two concentric circles (an outer filled circle in the object color, a smaller white inner circle), not a flat ellipse.
+- **Per-object color is an armed tool, not a per-object edit.** `Cone`, `Disc` and `PlayerMarker` each carry an optional `color`; balls, goals and zones are deliberately not colorable and carry no `color` field, and arrows are not `PlacedObject`s at all and stay `canvasInk`. Colour is armed from the tool tray's Color slot with a chosen swatch and **stays armed**, repainting each colorable object the coach taps. Rules while armed:
+  - A tap **never selects** — arming the tool clears any live selection, so the two meanings of a tap cannot collide. Dragging an object still moves it.
+  - A tap on anything that isn't a colorable object — an arrow, a ball, a goal, empty grass — is a deliberate no-op: no recolor, no selection, no placement, and the tool stays armed.
+  - The armed color **does not inherit** to newly placed objects. It is not a default; it only ever repaints what is tapped.
+  - **Exit** is re-tapping the armed swatch, which disarms back to Select — the same toggle-off every other tool in the tray has, and the tool's only exit.
+  - Armed, the Color button renders as the color itself (a filled chip with a hairline border, so the white swatch stays visible); idle, it is the plain palette icon.
+- **Preset swatches only** — no arbitrary color entry. The canvas tool offers ten, ordered to wrap into two rows of five, including white: white would be an invisible cone on a white pitch, but a player marker always carries a 2px `canvasInk` border, so it reads as the natural opposing-team fill. The lineup Appearance sheet deliberately kept its own narrower list rather than inheriting this widening.
+- The **disc** is drawn as two concentric circles (an outer filled circle in the object color, a smaller white inner circle), not a flat ellipse.
 - **Goal & mini-goal** are two distinct SVG assets, not one frame scaled.
 
 > Each equipment item is its own `PlacedObject` type — `Cone`, `Ball`, `Goal`/`MiniGoal`, `Pole`, `Ladder`, `Flag`, `Disc` — matching the existing per-type pattern (see `architecture.md`). No generic `equipment` + `variant` type: every item gets an explicit interface so `PlacedObject` switches stay exhaustively checked by TypeScript as the set grows. Pole, ladder, flag and disc keep their types but are **not in the palette**.
@@ -449,7 +462,9 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 
 - **Selection state**: 1.5px `colors.primary` bounding outline with `radius.sm`; for lines, highlight the path itself at width +1 in `colors.primary`.
 - **Handles**: rotate/scale handles as 20px circles, white fill, 1.5px `colors.primary` border, `shadow.sm`. Touch target 44 via hit-slop.
-- **Selection toolbar**: floating pill (`colors.overlayBar`, `radius.pill`, `shadow.md`) with contextual actions — duplicate, color, bring-to-front, delete. Icons 22, `colors.textInverse`; delete icon `colors.error`. **Color appears only for objects that carry one** (cone, disc, player marker); it is absent otherwise rather than shown disabled.
+- **Selection toolbar**: floating pill (`colors.overlayBar`, `radius.pill`, `shadow.md`) with two actions — **duplicate** and **delete**. Icons 22, `colors.textInverse`; delete icon `colors.error`. Two actions previously listed here are gone: **color** became an armed tool in the tray (above), and **bring-to-front** was removed outright (see Layering).
+  - The pill's own background is pass-through (`pointerEvents="box-none"`); only its buttons catch touches, so a tap landing on the padding between icons still reaches the canvas and deselects.
+  - It is rendered as a **sibling** of the canvas gesture view, not a descendant — its buttons use RN's classic touch responder, which otherwise races with (and beats) the pan recognizer for touches elsewhere on the canvas. For the same reason its buttons are the one interactive surface in the app with no press animation.
   - **Default position**: floats **above** the selected object, gap `spacing.sm`.
   - **Flip rule**: when the object's top edge sits within the **top 25%** of the canvas height, the toolbar **flips to below** the object (same gap) so it never collides with the top bar. Compute against canvas height, animate the reposition (§10).
   - **Not built**: a **line-type** action for switching a drawn arrow between pass/shot/run/dribble after the fact. Specified here, not implemented — the line type is fixed at draw time.
@@ -458,7 +473,9 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 
 Pitch background → drawn objects → selection outline/handles → selection toolbar → tool palette / top bar.
 
-Within "drawn objects", **objects and arrows share a single stacking order** even though they live in two arrays — so *bring to front* on a line genuinely places it above equipment, not just above other lines.
+Within "drawn objects", **objects and arrows share a single stacking order** even though they live in two arrays — so a newly drawn line genuinely lands above existing equipment, not merely above other lines. The order is computed from current state rather than a persisted counter, so it needs no undo/redo bookkeeping of its own.
+
+> There is **no *bring to front* action**. It was removed from the selection toolbar; the shared counter and every stored `zIndex` are untouched, so the model above still holds and the action could return without a data change.
 
 ### Lineup view (reuses these primitives)
 
@@ -478,10 +495,20 @@ The pitch renderer is **value-driven**: it draws whatever a style object describ
 | `striped` | Whether `bands` repeats down the pitch as mowing stripes, or fills flat with `bands[0]` |
 | `lineColor` | The pitch markings drawn over the bands |
 | `captionColor` | Text sitting directly on the surface — the player-name captions. Part of the style because a dark caption vanishes on a dark surface |
-| `captionGlowColor` | Halo behind that caption, always the opposite tone to `captionColor`. Low-alpha — separation, not a drop shadow. It is what keeps a name legible where it crosses a stripe boundary or a marking |
+| `captionOutlineColor` | Outline stroked around that caption's letterforms, always the opposite tone to `captionColor`. It is what keeps a name legible where it crosses a stripe boundary or a marking |
 | `bandCount?` | Stripe count override; falls back to `canvas.pitch.bandCount` (11 — odd, so top and bottom bands match and one band centers on the halfway line) |
 
 Two presets ship: **White** (flat white, dark markings — the default, matching the drawing canvas) and **Green stripes** (two-tone mown turf, white markings and captions). An unrecognized stored value resolves back to White rather than failing to render.
+
+#### Caption outline
+
+The name caption is a **stroked outline around the letterforms**, not a halo behind them. It replaced a soft glow, and the mechanics are worth stating because they constrain the caption in ways the glow did not:
+
+- **The caption is SVG text, drawn twice.** `react-native-svg` has no paint-order support, so a stroke on a single text node is centred on the glyph outline *and* painted over the fill — it eats half the letter weight inward and thickens 13px type into mush. The fix is two copies: a stroke-only copy underneath at **double** the intended width, then the filled copy on top. Only the outer half of that stroke survives, which is a true outline rather than a halo.
+- `canvas.marker.captionOutline.width` is therefore the **total** stroke width; the visible outline is half of it.
+- **The outline colors are near-opaque, not low-alpha.** A halo spreads over several pixels and can afford to be faint; a 1pt stroke at low alpha just lets the stripe seam read straight through it.
+- **Trade: SVG text does not ellipsize.** It clips at the viewport edge with no `…`. The caption box is given its own width (wider than the marker's 72pt container), so a real first name fits — about **14 characters** at 13px SemiBold, clipping with no ellipsis beyond that. The previous RN text ellipsized at roughly 10. The container is deliberately *not* widened to match: its width **is** the marker's touch target, and stretching it would overlap the hit areas of neighbouring players in a back four. Both platforms leave the overflow visible and neither delivers touches outside a parent's bounds, so the wider caption draws in full without becoming tappable.
+- The SVG viewport is a hard clip, so the caption box is padded by the full stroke width on every side (otherwise the outline on a descender is sliced off) and the same amount comes back off its top margin, so nothing moves.
 
 #### Marker styles
 
@@ -558,6 +585,8 @@ Tone is always forward-looking and optional — describe the reward, not the def
 
 Restraint is the rule. Motion confirms an action or maintains spatial continuity; it never decorates. Use `react-native-reanimated`. Always respect `AccessibilityInfo.isReduceMotionEnabled` — when on, cut durations to 0 and skip non-essential transitions.
 
+> **Reduce-motion compliance is currently partial.** The shared `useReduceMotion` hook exists and press feedback honours it (durations drop to 0). The bottom sheet's present/dismiss and the selection toolbar's flip spring do **not** yet consult it. Unclaimed work, not a changed intent.
+
 ### Duration & easing tokens
 
 | Token | Value | Use |
@@ -571,12 +600,14 @@ Restraint is the rule. Motion confirms an action or maintains spatial continuity
 
 ### Patterns
 
-- **Press feedback** (buttons, cards, tabs): `scale → 0.98` + slight opacity/color shift over `motion.fast`. The single most important micro-interaction — apply it consistently.
+- **Press feedback** (buttons, cards, tabs): `scale → 0.98` + opacity → 0.96 over `motion.fast`. The single most important micro-interaction — apply it consistently, through the one shared hook so the response is identical everywhere. It is the sole spec of the pressed scale; §6's Card row defers to this value.
+  - **Deliberate exclusions**, each for a reason rather than an oversight: the **bottom-sheet backdrop scrim** (a dimming plane, not a control); the **two canvas deselect wrappers** (the top bar and the tool tray, whose `onPress` is *deselect* — scaling a whole bar on a stray tap would be wrong); the **selection toolbar's buttons** (their classic-touch-responder Pressables race with the gesture-handler pan recognizer, see §7); and the **tab items** (React Navigation's default treatment — changing it needs a custom `tabBarButton`).
+  - **Known gap**, not a decision: the session-builder block card's five controls are still unanimated.
 - **Bottom sheet**: slide up + backdrop fade using `motion.spring`; dismiss reverses with `motion.slow` easing on the backdrop.
 - **Coaching points expand/collapse**: animate height/layout with `motion.base` + `motion.easeStandard`; chevron rotates 90°. Use `LayoutAnimation` or Reanimated `withTiming` on measured height.
 - **Selection toolbar flip**: when the top-25% rule triggers a reposition, animate the Y translation with `motion.spring` so it glides above/below rather than jumping.
 - **Training tab → Canvas**: pressing the Training tab opens the Canvas modal directly (standard modal present transition); no sheet, no intermediate screen.
-- **Empty state / list load**: a single, subtle staggered fade-in (opacity + 8px translateY, `motion.base`, ~40ms stagger) on first mount only. One orchestrated reveal beats scattered micro-animations.
+- **Empty state / list load**: a single, subtle staggered fade-in (opacity + 8px translateY, `motion.base`, ~40ms stagger) on first mount only. One orchestrated reveal beats scattered micro-animations. **Not built** — specified here, with no entrance animation implemented on any list or empty state.
 - **Avoid**: looping animations, parallax, bouncy overshoot on content, anything that draws the eye away from the coach's marks on the canvas.
 
 ---
@@ -714,8 +745,10 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  // captionGlow is a glow, not a directional shadow: zero offset, small blur.
-  marker: { diameter: 30, border: 2, captionGlow: { radius: 5, offset: { width: 0, height: 0 } } },
+  // captionOutline is the stroke around the player-name letterforms, drawn beneath the fill.
+  // This is the TOTAL stroke width: it is centered on the glyph outline, so the fill covers the
+  // inner half and the visible outline is half this value. See LineupMarker.
+  marker: { diameter: 30, border: 2, captionOutline: { width: 2 } },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
   // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the
@@ -725,11 +758,13 @@ export const canvas = {
     ink: '#16181A',
     turfDark: '#357007',
     turfLight: '#4F980C',
-    // Caption glow: a soft halo behind the player-name text, always the opposite tone to the
-    // caption itself, so the letters separate from whatever they sit on (mowing stripes, a
-    // marking line). Kept low-alpha — separation, not a drop shadow.
-    glowLight: 'rgba(255, 255, 255, 0.80)',
-    glowDark: 'rgba(22, 24, 26, 0.65)',
+    // Caption outline: the stroke around the player-name letterforms, always the opposite tone
+    // to the caption itself, so the letters separate from whatever they sit on (mowing stripes,
+    // a marking line). Near-opaque, unlike the soft halo this replaced — a halo is spread over
+    // several pixels and can afford to be faint, but a 1pt stroke at low alpha just lets the
+    // stripe seam read straight through it.
+    outlineLight: '#FFFFFF',
+    outlineDark: '#16181A',
     // Mowing bands drawn across the pitch height. Odd, so the top and bottom bands share a shade
     // (symmetric) and one band sits centered on the halfway line.
     bandCount: 11,

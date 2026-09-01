@@ -2,7 +2,7 @@
 
 A focused, local-first mobile tool for solo youth soccer coaches: **plan training sessions** on a pitch canvas and **set matchday lineups** — all stored on the device, no account or internet required. Built for coaches who run club, high-school, and competitive teams without assistant staff.
 
-**Status:** MVP feature-complete on device. Canvas, activity library, session builder, lineups and local export all work end to end. Not yet shipped — screen polish against `docs/design.md` and a release build are still open.
+**Status:** MVP feature-complete on device. Canvas, activity library, session builder, lineups and local export all work end to end, and the polish pass against `docs/design.md` has landed. Not yet shipped — a release build (there is no `eas.json`) is still open, along with a short list of known gaps and two open canvas interaction bugs. See *Known open issues* in [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
@@ -22,6 +22,7 @@ There is **no backend, no account, and no network dependency** in the MVP. The h
 | Layer | Technology |
 |---|---|
 | Frontend | React Native 0.86 (Expo 57, bare workflow) + React Native Skia |
+| SVG | react-native-svg (lucide's peer dependency; also used directly for lineup captions) |
 | Navigation | React Navigation v7 (native stack + bottom tabs) |
 | Client state | Zustand |
 | Persistence | expo-sqlite, behind a repository layer |
