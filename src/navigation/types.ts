@@ -1,13 +1,13 @@
 import type { NavigatorScreenParams } from '@react-navigation/native'
 
 export type LibraryStackParamList = {
-  Library: undefined
+  LibraryHome: undefined
   SessionBuilder: { sessionId?: string } | undefined
   ActivityDetail: { activityId: string }
 }
 
 export type LineupsStackParamList = {
-  Lineups: undefined
+  LineupsHome: undefined
 }
 
 export type TabParamList = {

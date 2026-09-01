@@ -20,7 +20,7 @@ const LineupsStackNav = createNativeStackNavigator<LineupsStackParamList>()
 function LibraryStack() {
   return (
     <LibraryStackNav.Navigator screenOptions={{ headerShown: false }}>
-      <LibraryStackNav.Screen name="Library" component={LibraryScreen} />
+      <LibraryStackNav.Screen name="LibraryHome" component={LibraryScreen} />
       <LibraryStackNav.Screen name="SessionBuilder" component={SessionBuilderScreen} />
       <LibraryStackNav.Screen name="ActivityDetail" component={ActivityDetailScreen} />
     </LibraryStackNav.Navigator>
@@ -30,7 +30,7 @@ function LibraryStack() {
 function LineupsStack() {
   return (
     <LineupsStackNav.Navigator screenOptions={{ headerShown: false }}>
-      <LineupsStackNav.Screen name="Lineups" component={LineupsScreen} />
+      <LineupsStackNav.Screen name="LineupsHome" component={LineupsScreen} />
     </LineupsStackNav.Navigator>
   )
 }
