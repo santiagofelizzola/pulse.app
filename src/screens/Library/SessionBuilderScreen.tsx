@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { ChevronLeft, Info, Share2 } from 'lucide-react-native'
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import Animated, { useSharedValue } from 'react-native-reanimated'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
 import { HeaderActionButton } from '../../components/ui/ScreenHeader'
@@ -235,7 +236,9 @@ export default function SessionBuilderScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    // Top edge only: the tab bar already pays insets.bottom (AppNavigator), and this
+    // container sits above it, so an additive bottom edge here would pay it twice.
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <AnimatedPressable

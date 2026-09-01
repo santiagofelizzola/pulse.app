@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { Alert, FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import Animated from 'react-native-reanimated'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { HeaderActionButton, ScreenHeader } from '../../components/ui/ScreenHeader'
 import { usePressAnimation } from '../../components/ui/usePressAnimation'
@@ -38,7 +39,9 @@ export default function LineupsScreen() {
   }, [])
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    // Top edge only: the tab bar already pays insets.bottom (AppNavigator), and this
+    // container sits above it, so an additive bottom edge here would pay it twice.
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader
         title="Lineups"
         trailing={<HeaderActionButton label="+" onPress={() => navigate('LineupEditor')} />}

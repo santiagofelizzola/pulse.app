@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Pencil, Share2, Trash2 } from 'lucide-react-native'
-import { Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated from 'react-native-reanimated'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { ExportSheet } from '../../components/ui/ExportSheet'
 import { ScreenHeader } from '../../components/ui/ScreenHeader'
@@ -98,7 +99,7 @@ export default function ActivityDetailScreen() {
   }, [activity, share])
 
   if (!activity) {
-    return <SafeAreaView style={styles.safeArea} />
+    return <SafeAreaView edges={['top']} style={styles.safeArea} />
   }
 
   // The saved thumbnail file already captures the full canvas at its real aspect ratio (see
@@ -107,7 +108,9 @@ export default function ActivityDetailScreen() {
   const thumbnailAspectRatio = getPitchAspectRatio(activity.canvasData.background)
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    // Top edge only: the tab bar already pays insets.bottom (AppNavigator), and this
+    // container sits above it, so an additive bottom edge here would pay it twice.
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader
         title={activity.name}
         onBack={() => navigation.goBack()}
