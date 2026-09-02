@@ -12,6 +12,7 @@ import type {
   ActivityTag,
   BlockType,
   CanvasData,
+  SessionUsage,
 } from '../../types'
 
 interface SessionRow {
@@ -101,6 +102,29 @@ function toSession(db: SQLiteDatabase, row: SessionRow): Session {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+// Every session holding at least one block that references `activityId`, most recently updated
+// first — the same order the Library lists sessions in, so a blocked delete names the sessions the
+// coach is currently working in before the ones they've left alone.
+//
+// EXISTS rather than a JOIN: an activity can legitimately appear as more than one block in the same
+// session (addActivity always inserts a fresh row), and each session must be reported once, or the
+// count shown to the coach would exceed the number of sessions they actually have to go edit.
+//
+// Exported for activityRepository's delete guard, which needs it synchronously inside a
+// transaction. Screens reach it through activityRepository.usage instead.
+export function sessionsUsingActivity(db: SQLiteDatabase, activityId: string): SessionUsage[] {
+  return db.getAllSync<SessionUsage>(
+    `SELECT s.id, s.name
+     FROM sessions s
+     WHERE EXISTS (
+       SELECT 1 FROM session_activities sa
+       WHERE sa.session_id = s.id AND sa.activity_id = ?
+     )
+     ORDER BY s.updated_at DESC`,
+    activityId
+  )
 }
 
 async function list(): Promise<Session[]> {

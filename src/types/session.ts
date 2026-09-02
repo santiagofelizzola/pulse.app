@@ -39,3 +39,10 @@ export interface AddSessionActivityInput {
   coachingPoints?: string
   durationOverride?: number
 }
+
+// A session that references an activity, carried without its blocks — the delete guard only
+// needs enough to name it.
+export interface SessionUsage {
+  id: string
+  name: string
+}

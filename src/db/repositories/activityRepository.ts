@@ -1,8 +1,23 @@
 import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
+import { sessionsUsingActivity } from './sessionRepository'
 import { resolveThumbnailUri, thumbnailFilename } from '../../utils/thumbnailUtils'
-import type { Activity, CreateActivityInput, ActivityTag, CanvasData } from '../../types'
+import type { Activity, CreateActivityInput, ActivityTag, CanvasData, SessionUsage } from '../../types'
+
+// Thrown by delete() instead of letting SQLite's own refusal escape. session_activities.activity_id
+// declares no ON DELETE clause, so the constraint already blocks this delete — but it surfaces as an
+// opaque "Error code 19: FOREIGN KEY constraint failed" that no screen can turn into a sentence.
+// This carries the blocking sessions, so the caller can name them.
+export class ActivityInUseError extends Error {
+  readonly usedBy: SessionUsage[]
+
+  constructor(usedBy: SessionUsage[]) {
+    super(`Activity is used in ${usedBy.length} session(s)`)
+    this.name = 'ActivityInUseError'
+    this.usedBy = usedBy
+  }
+}
 
 interface ActivityRow {
   id: string
@@ -129,9 +144,25 @@ async function update(id: string, patch: Partial<CreateActivityInput>): Promise<
   return updated
 }
 
+// What is holding a delete up, or an empty list when the activity is free to remove. Screens call
+// this before confirming, so a delete that cannot succeed is never presented as a decision.
+async function usage(id: string): Promise<SessionUsage[]> {
+  const db = getDatabase()
+  return sessionsUsingActivity(db, id)
+}
+
+// Refuses in-repository rather than leaving it to the foreign key: same outcome, but with the
+// blocking sessions attached to the error. Check and delete share one transaction so the guard
+// can't go stale between them, and the constraint stays underneath as the backstop.
+//
+// Callers must handle ActivityInUseError — this is not a delete that always succeeds.
 async function deleteActivity(id: string): Promise<void> {
   const db = getDatabase()
-  db.runSync('DELETE FROM activities WHERE id = ?', id)
+  db.withTransactionSync(() => {
+    const usedBy = sessionsUsingActivity(db, id)
+    if (usedBy.length > 0) throw new ActivityInUseError(usedBy)
+    db.runSync('DELETE FROM activities WHERE id = ?', id)
+  })
 }
 
 export const activityRepository = {
@@ -139,5 +170,6 @@ export const activityRepository = {
   getById,
   create,
   update,
+  usage,
   delete: deleteActivity,
 }

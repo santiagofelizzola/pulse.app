@@ -10,18 +10,22 @@ import { ExportSheet } from '../../components/ui/ExportSheet'
 import { ScreenHeader } from '../../components/ui/ScreenHeader'
 import { usePressAnimation } from '../../components/ui/usePressAnimation'
 import { getPitchAspectRatio } from '../Canvas/components/PitchBackground'
-import { activityRepository } from '../../db/repositories/activityRepository'
+import { ActivityInUseError, activityRepository } from '../../db/repositories/activityRepository'
 import type { LibraryStackParamList } from '../../navigation/types'
 import { colors, layout, radius, spacing, typography } from '../../theme/theme'
 import { activityTagLabel } from '../../utils/activityTags'
+import { activityInUseMessage } from '../../utils/activityUsage'
 import { useShareExport } from '../../export/useShareExport'
 import { exportActivity } from '../../utils/exportUtils'
-import type { Activity, ActivityTag } from '../../types'
+import type { Activity, ActivityTag, SessionUsage } from '../../types'
 import { ActivityEditSheet } from './components/ActivityEditSheet'
 
 type Route = RouteProp<LibraryStackParamList, 'ActivityDetail'>
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
+const DELETE_FAILED_TITLE = "Couldn't delete activity"
+const DELETE_FAILED_MESSAGE = 'Something went wrong. Try again.'
 
 export default function ActivityDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<LibraryStackParamList>>()
@@ -50,20 +54,50 @@ export default function ActivityDetailScreen() {
     setImageFailed(false)
   }, [activity?.thumbnailUri])
 
-  const handleDelete = useCallback(() => {
+  const showBlocked = useCallback((name: string, usedBy: SessionUsage[]) => {
+    Alert.alert("Can't delete activity", activityInUseMessage(name, usedBy), [{ text: 'OK' }])
+  }, [])
+
+  const handleDelete = useCallback(async () => {
     if (!activity) return
+
+    // Asked before the confirm, not after it: a delete that can't succeed shouldn't be dressed up
+    // as a decision the coach gets to make.
+    let usedBy: SessionUsage[]
+    try {
+      usedBy = await activityRepository.usage(activity.id)
+    } catch {
+      Alert.alert(DELETE_FAILED_TITLE, DELETE_FAILED_MESSAGE)
+      return
+    }
+
+    if (usedBy.length > 0) {
+      showBlocked(activity.name, usedBy)
+      return
+    }
+
     Alert.alert('Delete activity?', `"${activity.name}" will be removed from your library.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await activityRepository.delete(activity.id)
-          navigation.goBack()
+          // Alert discards this promise, so every failure has to be caught right here — an escaping
+          // rejection is invisible in a release build, which is how a blocked delete used to read
+          // as a tap that simply didn't register.
+          try {
+            await activityRepository.delete(activity.id)
+            navigation.goBack()
+          } catch (error) {
+            // The check above is the usual path; this covers the activity being added to a session
+            // between that check and this confirm, plus any other failure.
+            if (error instanceof ActivityInUseError) showBlocked(activity.name, error.usedBy)
+            else Alert.alert(DELETE_FAILED_TITLE, DELETE_FAILED_MESSAGE)
+          }
         },
       },
     ])
-  }, [activity, navigation])
+  }, [activity, navigation, showBlocked])
 
   const handleSaveEdit = useCallback(
     async (patch: {
