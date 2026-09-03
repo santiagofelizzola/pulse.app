@@ -1,5 +1,5 @@
 import { ExportError, stage } from '../export/errors'
-import { renderAndCapture, setExportStatus } from '../export/exportHost'
+import { beginExportRun, endExportRun, renderAndCapture, setExportStatus } from '../export/exportHost'
 import { fileSize, publishExportFile, resetExportsDir, toSafeBasename } from '../export/files'
 import { LIGHT_EXPORT_PALETTE } from '../export/palette'
 import { buildPdfFromPageImages } from '../export/pdf'
@@ -56,6 +56,7 @@ async function exportImage({
   logLabel,
 }: ImageExportRequest): Promise<ExportResult> {
   setExportStatus('Preparing export...')
+  beginExportRun()
 
   try {
     // Clears the PREVIOUS run's artifacts, never this one's — see resetExportsDir.
@@ -72,10 +73,14 @@ async function exportImage({
       `[export] ${logLabel} -> ${result.widthPx}x${result.heightPx}px, ${(result.byteSize / 1024).toFixed(0)}KB`
     )
 
+    // Down BEFORE the share sheet, not in the finally after it: nothing of ours belongs on screen
+    // behind the OS sheet, and the coach must never meet the overlay on the way out.
+    endExportRun()
     await stage('share', () => shareFile(result.uri, 'png', dialogTitle))
 
     return result
   } finally {
+    endExportRun()
     setExportStatus(null)
   }
 }
@@ -136,6 +141,7 @@ export async function exportSession(session: Session, options: ExportOptions): P
   }
 
   setExportStatus('Preparing export...')
+  beginExportRun()
 
   try {
     await stage('prepare', () => resetExportsDir())
@@ -168,10 +174,13 @@ export async function exportSession(session: Session, options: ExportOptions): P
         `${(result.byteSize / 1024).toFixed(0)}KB`
     )
 
+    // Same ordering as exportImage: overlay down before the share sheet goes up.
+    endExportRun()
     await stage('share', () => shareFile(result.uri, 'pdf', 'Share session'))
 
     return result
   } finally {
+    endExportRun()
     setExportStatus(null)
   }
 }

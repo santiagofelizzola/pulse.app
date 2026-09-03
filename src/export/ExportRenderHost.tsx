@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Modal,
+  BackHandler,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -31,6 +31,10 @@ const MAX_FIT_PASSES = 3
 // absolutely positioned, so the capture target measures zero height and the capture never fires.
 // Failing loudly turns that into a reportable error instead of a hang.
 const LAYOUT_TIMEOUT_MS = 8000
+
+// How long the overlay stays a bare opaque ground before the spinner and label appear. Cosmetic
+// only — see chromeVisible.
+const CHROME_DELAY_MS = 200
 
 function waitFrames(count: number): Promise<void> {
   return new Promise((resolve) => {
@@ -79,21 +83,32 @@ function estimateFitWidth(
  * Mounts export artifacts so they can be captured, and shows the coach a progress scrim while
  * that happens.
  *
- * The artifact renders ON SCREEN, at full size, inside a Modal — not offscreen and not scaled.
- * That is a hard requirement of the capture path, not a convenience: RNViewShot.mm's
- * drawViewHierarchyInRect warns in its own source that it "reports incorrect success even though
- * the image is blank" for views it cannot render, and Skia's Metal-backed pitch is exactly the
- * kind of layer that goes blank when detached from a presented window.
+ * The artifact renders at full size, in the view tree — not offscreen and not scaled. Size still
+ * matters to the capture path: RNViewShot.mm's drawViewHierarchyInRect warns in its own source
+ * that it "reports incorrect success even though the image is blank" for views it cannot render.
  *
- * An opaque scrim sits on top so the coach never sees the artifact flash past — they see
- * "Preparing export…". Occlusion by a sibling view does not affect the capture, which re-renders
- * the target view's own subtree.
+ * It used to render inside a `Modal`, on the stated grounds that the capture needed a *presented*
+ * window. That turned out to be false, and expensively so. The Modal presented from the react
+ * root view controller, which is already presenting whenever the coach is inside a fullScreenModal
+ * editor — so from those screens its presentation was deferred until the editor was dismissed,
+ * measured at 4.1-4.8s. Every export from an editor was therefore captured while the Modal had
+ * NOT presented, and every one of those PNGs was correct. The deferred present/dismiss pair
+ * arriving after the exit is what wedged UIKit, and later what flickered.
  *
- * A Modal (rather than anything in the navigation tree) means the editor underneath is never
- * unmounted, re-laid-out or scrolled by an export.
+ * So: a plain absolutely-positioned overlay. No view controller, no presentation chain, nothing
+ * to defer, interrupt or corrupt. It is rendered last in RootNavigator, so it paints over the
+ * navigator; it does not cover a presented editor screen, which is a change in nothing, since the
+ * scrim was never visible from there anyway.
+ *
+ * An opaque scrim sits on top of the artifact so it is never seen being built. Occlusion by a
+ * sibling view does not affect the capture, which re-renders the target view's own subtree.
+ *
+ * Sitting outside the navigator still means an export never unmounts, re-lays-out or scrolls
+ * whatever screen the coach started it from.
  */
 export function ExportRenderHost() {
   const job = useExportHostStore((state) => state.job)
+  const running = useExportHostStore((state) => state.running)
   const status = useExportHostStore((state) => state.status)
   const clear = useExportHostStore((state) => state.clear)
   const cancel = useExportHostStore((state) => state.cancel)
@@ -116,6 +131,38 @@ export function ExportRenderHost() {
   // laid out yet.
   const [measured, setMeasured] = useState<{ jobId: number; height: number } | null>(null)
   const fitPassRef = useRef(0)
+
+  // Follows the RUN, not the job — see `running` in exportHost. A session export churns `job`
+  // once per page; the overlay must not blink between them.
+  const active = running || job !== null
+
+  // Purely cosmetic, and deliberately the only delay left in this file. A single-diagram export
+  // finishes in roughly 300ms, and a labelled loading screen that appears and vanishes inside
+  // that window reads as a glitch, where a bare opaque ground reads as nothing at all. This gates
+  // only what is DRAWN inside an already-mounted overlay: no capture, no teardown and no
+  // navigation waits on it, so it cannot sequence anything.
+  const [chromeVisible, setChromeVisible] = useState(false)
+
+  useEffect(() => {
+    if (!active) {
+      setChromeVisible(false)
+      return
+    }
+    const timer = setTimeout(() => setChromeVisible(true), CHROME_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [active])
+
+  // Android's back gesture used to reach this through the Modal's onRequestClose. With no Modal
+  // there is no such hook, and without a replacement a long multi-page session export would trap
+  // the coach with no way out — which is the bug that added onRequestClose in the first place.
+  useEffect(() => {
+    if (!active) return
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancel()
+      return true
+    })
+    return () => subscription.remove()
+  }, [active, cancel])
 
   const measuredHeight = job && measured?.jobId === job.id ? measured.height : null
 
@@ -192,10 +239,20 @@ export function ExportRenderHost() {
     }
   }, [job, measuredHeight, width, clear])
 
+  if (!active) return null
+
   return (
-    // onRequestClose is Android's back gesture. It used to be a no-op, which trapped the coach
-    // inside a long multi-page session export with no way out.
-    <Modal visible={job !== null} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={cancel}>
+    // An in-tree overlay, NOT a Modal. The Modal was the whole bug: it presented from the react
+    // root view controller, which is already presenting whenever the coach is inside a
+    // fullScreenModal editor, so its presentation was deferred until that editor was dismissed —
+    // measured at 4.1-4.8s, landing after the exit rather than during the export. That deferred
+    // present/dismiss pair is what wedged UIKit, and later what flickered on exit. A plain view
+    // has no view controller and no presentation chain, so none of that is reachable.
+    //
+    // Rendered last in RootNavigator, so it paints over the navigator. It does NOT cover a
+    // presented editor screen — but it never did: the coach confirmed the scrim was only ever
+    // visible after leaving, which is the observation that made this rewrite possible.
+    <View style={StyleSheet.absoluteFill} pointerEvents="auto">
       <View style={styles.root}>
         {job && width > 0 ? (
           // Width is fixed, height is left to content and then measured — see measuredHeight.
@@ -217,12 +274,18 @@ export function ExportRenderHost() {
           </View>
         ) : null}
 
+        {/* Opaque from the first frame so the artifact is never seen being built; the spinner and
+            label arrive later, so a fast export is a blink rather than a loading screen. */}
         <View style={styles.scrim}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.status}>{status ?? 'Preparing export…'}</Text>
+          {chromeVisible ? (
+            <>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.status}>{status ?? 'Preparing export…'}</Text>
+            </>
+          ) : null}
         </View>
       </View>
-    </Modal>
+    </View>
   )
 }
 

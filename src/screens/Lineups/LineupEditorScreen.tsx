@@ -284,13 +284,19 @@ export default function LineupEditorScreen() {
         }
         dirtyRef.current = false
         setSaveSheetOpen(false)
-        // Let the sheet's <Modal> actually come down before dismissing the screen underneath it.
-        // Both editors end with this same close-sheet-then-goBack pair, but the canvas reaches it
-        // after a real frame boundary (its rAF wait + thumbnail capture), whereas the repositories
-        // are synchronous inside — so without this, goBack() dispatches in the same batch that
-        // unmounts the Modal, and the screen starts dismissing while its child modal is still
-        // presented. That wedges the presentation hierarchy: navigation stops responding and only
-        // a relaunch recovers it.
+        // Let the sheet's <Modal> come down before dismissing the screen underneath it: goBack()
+        // would otherwise dispatch in the same batch that unmounts the Modal, and the screen would
+        // start dismissing while its child modal is still presented.
+        //
+        // A timing guess, and known to be one — kept only until BottomSheet stops UNMOUNTING its
+        // Modal (components/ui/BottomSheet.tsx returns null on !visible), which is what bypasses
+        // React Native's own onDismiss handshake and leaves this with nothing to wait on. Replace
+        // it with that event; don't stack a second frame on it.
+        //
+        // The canvas has the identical close-then-goBack pair with NO separation at all
+        // (CanvasScreen's rAF and thumbnail capture happen BEFORE the sheet is closed, so they add
+        // no gap between the two calls that matter). It is exposed, not protected — an earlier
+        // note here claimed otherwise and was wrong.
         await waitForNextFrame()
         navigation.goBack()
       } catch {
