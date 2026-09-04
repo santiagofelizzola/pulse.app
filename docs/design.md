@@ -381,7 +381,7 @@ The canvas screen is **one continuous light surface** (`colors.background`), not
 
 > The white pitch is the **default surface**, not the only one. Lineups can choose a surface preset per lineup — see *Pitch styles* below. The drawing canvas offers no such picker.
 
-**Aspect ratio is per background**, not one constant. `canvas.pitchAspectRatio` (68:105 — a real pitch rotated to portrait) covers full-pitch and blank; a half pitch, a third and the penalty-box crop each derive their own from real pitch dimensions, so a cropped background gets a shorter frame rather than the same tall shape with empty grass below it.
+**Aspect ratio is per background**, not one constant. `canvas.pitchAspectRatio` (68:105 — a real pitch rotated to portrait) covers full-pitch, blank, **and the two blank splits** (halves and thirds — they are the blank surface with dividers drawn on it, so they take its frame and its aspect exactly, listed explicitly rather than left to a `default` branch); a half pitch, a third and the penalty-box crop each derive their own from real pitch dimensions, so a cropped background gets a shorter frame rather than the same tall shape with empty grass below it.
 
 ### Top bar (light)
 
@@ -396,23 +396,29 @@ The canvas screen is **one continuous light surface** (`colors.background`), not
 - Tool button: 44×44 touch target, icon 24, `colors.textPrimary` inactive.
 - **Selected tool**: `colors.primaryTint` circular fill behind the icon, icon `colors.primary` (same selected treatment as a filter chip — see §6).
 - Gap between tools `spacing.sm`. No `hitSlop` is added: the buttons are already at the 44px minimum, and expanding them across an 8px gap would overlap neighbors' touch areas.
-- **Four tools open a popover** rather than placing directly: Player (blank/GK/Co), Ball (BW/colored), Zone (rect/circle) and Color (the swatch grid). Each is a small light overlay (`colors.surface`, 1px `colors.border`, `shadow.md`) anchored above its own button — the one legitimate floating-shadow use here, since it's transient, not the tray itself. The popover pins its **left or right edge** to its button (whichever screen edge the button is nearer) and grows inward, rather than centering and risking overflow. The color popover is the one that wraps: ten swatches at five per row.
+- **Three tools open a popover** rather than placing directly: Player (blank/GK/Co), Ball (BW/colored) and Color (the swatch grid). **Zone places directly** — it used to offer rect/circle, and with the circle gone a popover holding one option is a tap the coach shouldn't have to make. Each popover is a small light overlay (`colors.surface`, 1px `colors.border`, `shadow.md`) anchored above its own button — the one legitimate floating-shadow use here, since it's transient, not the tray itself. The popover pins its **left or right edge** to its button (whichever screen edge the button is nearer) and grows inward, rather than centering and risking overflow. The color popover is the one that wraps: ten swatches at five per row.
 
 ### Background picker
 
-Opens as a bottom sheet (§6) showing the six `CanvasBackground` options — full pitch, half pitch, final third, middle third, penalty box, blank — as 16:10 thumbnail tiles, `radius.md`, selected tile ringed 2px `colors.primary`.
+Opens as a bottom sheet (§6) showing the seven `CanvasBackground` options — full pitch, half pitch, final third, penalty box, blank, halves, thirds — as 16:10 thumbnail tiles, `radius.md`, selected tile ringed 2px `colors.primary`. The grid wraps two per row on any supported width, so that is **four rows with a single tile on the last**.
+
+**Halves and thirds** are the blank surface divided into equal horizontal bands: dividers running across the width, bands stacking top to bottom, no touchline rect and no pitch markings. The dividers run the **full frame width** rather than inset by the pitch margin — `blank` has no inset play area to align to, and a divider that stopped short would read as a marking on a pitch rather than a division of the surface.
+
+**Middle third was removed.** It still appears in stored drills, and resolves to **final third** — chosen for geometry, not markings: the two share an aspect ratio exactly, so a drill's objects land where they always did rather than reflowing. What changes underneath them is a goal box instead of a halfway line and centre circle. (Halves is closer by markings, but would reflow the drill into a frame nearly twice as tall.) The picker maps over a single shared option list, so a new preset is one entry there plus a branch in `PitchBackground` — never a second list to keep in sync.
 
 ### Player markers
 
+> **Two sizes, two tokens.** The drawing-canvas marker and the lineup marker were one constant and are now independent, so shrinking one can never move the other. This table is the **drawing-canvas** marker. The lineup marker is 30 — see *Marker styles* below.
+
 | Property | Value |
 |---|---|
-| Diameter | 30 (default) |
+| Diameter | **24** (`canvas.marker.canvasDiameter`). The lineup circle marker and the tool palette's marker-preview and color-swatch chips stay at **30** (`canvas.marker.diameter`) |
 | Shape | circle, `radius.pill` |
 | Fill | **`colors.canvasInk` (black)** for a newly placed marker, stamped onto the object at creation. A marker with no stored `color` — every one saved before this default existed — still renders `colors.surface` (white). See the note below |
 | Border | 2px `colors.canvasInk` (or team color) |
-| Label | optional 1–2 chars, centered, `typography.label` with `fonts.semibold`. Ink is `colors.canvasInk` on a light fill and flips to `colors.textInverse` on a dark one — perceived brightness (ITU-R BT.601), not a full contrast ratio, which is enough for a fixed swatch set. The flip is unchanged, but the *common* case inverted with the black default: a new marker now carries white ink, and a legacy uncolored (white) one keeps dark ink. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
+| Label | optional 1–2 chars, centered, **`typography.caption`** (13px) with `fonts.semibold` — not the 14px `typography.label` the lineup marker keeps. The shape forced it: 24pt with a 2pt border leaves 20pt of clear interior, and "GK" (the wider of the two presets) measures 20.0pt at 14px against 18.6pt at 13px. Ink is `colors.canvasInk` on a light fill and flips to `colors.textInverse` on a dark one — perceived brightness (ITU-R BT.601), not a full contrast ratio, which is enough for a fixed swatch set. The flip is unchanged, but the *common* case inverted with the black default: a new marker now carries white ink, and a legacy uncolored (white) one keeps dark ink. Maps to `PlayerMarker.label` (`''` = blank). **No jersey numbers by default** — the canvas label is independent of a roster jersey number. |
 | Palette presets | The players tool offers three quick options: a plain (blank-label) marker, and two labelled presets — **GK** and **Co** — which simply place a marker with that `label` value. All other labels are entered ad-hoc. No non-circle player shapes (triangle/square/etc. belong to equipment/zones, not markers). |
-| Min touch target | 44 (use transparent hit area padding around the 30px visual) |
+| Min touch target | 44+, and **not derived from the diameter** — players are hit-tested against a flat `HIT_RADIUS`, so the tap area is unaffected by how small the visual gets |
 
 > **The black default does not repaint existing drills.** It is set explicitly on the object at creation, *not* by moving the renderer's `color ?? colors.surface` fallback. Moving the fallback would silently reflow every marker in the library to black — and leave each saved drill disagreeing with its own stored thumbnail PNG, which was captured white. So `color` stays optional on `PlayerMarker`: old drills keep their white markers, only new ones come out black.
 
@@ -421,7 +427,7 @@ Opens as a bottom sheet (§6) showing the six `CanvasBackground` options — ful
 Placeable set: **cone, goal, mini-goal, and two balls** (black-and-white, colored). Rendered from **vector SVG assets** in `assets/icons/`, loaded via Skia's SVG support, sized for consistent visual weight next to player markers. Selectable/movable like any object.
 
 - **Assets are pre-cleaned and pre-colored offline**, not recolored at runtime. DOCTYPE and CSS are stripped so Skia's parser — which does no CSS cascade resolution — reads them natively, and each file already carries the right ink for a white pitch. The one runtime substitution is a literal text replace for `currentColor`, which Skia won't resolve on its own.
-- **Sizing is calibrated per asset, not declared.** Each source file has a different viewBox and a different amount of empty margin around its ink, so identical width numbers render at visibly different sizes. The stored width for each asset is a *measured* value correcting for that, so equal numbers produce equal footprints. The rule: everything renders clearly smaller than the 30px player marker **except the full goal**, which stays large by design.
+- **Sizing is calibrated per asset, not declared.** Each source file has a different viewBox and a different amount of empty margin around its ink, so identical width numbers render at visibly different sizes. The stored width for each asset is a *measured* value correcting for that, so equal numbers produce equal footprints. The rule: everything renders clearly smaller than the player marker **except the full goal**, which stays large by design. Note the numbers were calibrated against a **30pt** marker and have deliberately **not** been re-derived since the canvas marker dropped to 24 — cone and balls at 17pt now sit closer to it than intended, but re-calibrating every asset would change how every drill already in the library exports, for a hierarchy that still reads.
 - **Per-object color is an armed tool, not a per-object edit.** `Cone`, `Disc` and `PlayerMarker` each carry an optional `color`; balls, goals and zones are deliberately not colorable and carry no `color` field, and arrows are not `PlacedObject`s at all and stay `canvasInk`. Colour is armed from the tool tray's Color slot with a chosen swatch and **stays armed**, repainting each colorable object the coach taps. Rules while armed:
   - A tap **never selects** — arming the tool clears any live selection, so the two meanings of a tap cannot collide. Dragging an object still moves it.
   - A tap on anything that isn't a colorable object — an arrow, a ball, a goal, empty grass — is a deliberate no-op: no recolor, no selection, no placement, and the tool stays armed.
@@ -436,12 +442,14 @@ Placeable set: **cone, goal, mini-goal, and two balls** (black-and-white, colore
 
 ### Shapes
 
-Two zone objects — a **rectangle** (`Zone`) and a **circle** (`CircleZone`) — drawn on the pitch to mark an area.
+One zone object — a **rectangle** (`Zone`) — drawn on the pitch to mark an area.
 
-- **Placed by drag, not by tap.** Touch-down and release are the rectangle's opposite corners, or the endpoints of the circle's diameter, with a live preview while dragging. Sizing a zone is the point of it, so placing and sizing are one gesture.
+- **Placed by drag, not by tap.** Touch-down and release are the rectangle's opposite corners, with a live preview while dragging. Sizing a zone is the point of it, so placing and sizing are one gesture.
 - A very short drag still yields a usable shape: the footprint is floored at 40px.
-- After placing, the tool disarms back to select — a shape is usually adjusted next, not repeated.
-- Rectangles resize on **width and height independently** — the one non-uniform transform on the canvas; everything else scales uniformly.
+- After placing, the tool disarms back to select.
+- **The drag is the only sizing.** There is no resize afterwards — the rectangle's width/height handle went with the scale handle (see *Object selection*). A zone's size is fixed once placed.
+
+> **The circle zone left the palette.** `CircleZone`, its interface and its renderer all remain, exactly the way pole/ladder/flag/disc remain: saved drills contain circle zones and must keep rendering them, and they are still selectable and hit-tested. Only the placement affordance is gone. It was placed the same way — touch-down and release as the endpoints of a diameter.
 
 ### Movement lines & arrows
 
@@ -461,7 +469,8 @@ All strokes use rounded caps/joins. Default color `colors.canvasInk`; color is u
 ### Object selection
 
 - **Selection state**: 1.5px `colors.primary` bounding outline with `radius.sm`; for lines, highlight the path itself at width +1 in `colors.primary`.
-- **Handles**: rotate/scale handles as 20px circles, white fill, 1.5px `colors.primary` border, `shadow.sm`. Touch target 44 via hit-slop.
+- **Handles**: **rotate is the only handle** — a 20px circle, white fill, 1.5px `colors.primary` border, `shadow.sm`, floating above the object. Touch target 44 via hit-slop.
+  - **Removed: the scale handle** that sat on the bottom-right corner, and the independent width/height resize it forked into on a rectangle. An object's size is now fixed once placed. The *data* is untouched — `scale` on every object and `width`/`height` on `Zone` are still stored and still rendered from, so a drill saved while scaling existed renders exactly as it did; the selection outline still hugs the size the object actually renders at. What went is the gesture, not the geometry.
 - **Selection toolbar**: floating pill (`colors.overlayBar`, `radius.pill`, `shadow.md`) with two actions — **duplicate** and **delete**. Icons 22, `colors.textInverse`; delete icon `colors.error`. Two actions previously listed here are gone: **color** became an armed tool in the tray (above), and **bring-to-front** was removed outright (see Layering).
   - The pill's own background is pass-through (`pointerEvents="box-none"`); only its buttons catch touches, so a tap landing on the padding between icons still reaches the canvas and deselects.
   - It is rendered as a **sibling** of the canvas gesture view, not a descendant — its buttons use RN's classic touch responder, which otherwise races with (and beats) the pan recognizer for touches elsewhere on the canvas. For the same reason its buttons are the one interactive surface in the app with no press animation.
@@ -512,9 +521,12 @@ The name caption is a **stroked outline around the letterforms**, not a halo beh
 
 #### Marker styles
 
-**Circle** (default, the 30px marker above) or **Jersey** — a shirt silhouette. Two calibrations make the jersey work and must move together if either changes:
+**Circle** — the **30px** lineup marker (`canvas.marker.diameter`; the drawing-canvas marker is 24 and independent, see *Player markers*) — or **Jersey**, a shirt silhouette. Three calibrations make the jersey work:
 
-- It renders at **1.875× the circle's diameter**. Only the torso panel can carry marker text, and the torso is half the asset's width — a jersey scaled to 30px leaves ~15px of torso for a two-letter role needing ~22px, and the label spills onto the sleeves.
+- **Width is its own token: `canvas.marker.jerseyWidth: 49.5`**, with *no* arithmetic relationship to either marker diameter. It used to be `diameter × 1.875` (= 56.25), which coupled the jersey to a marker it merely sits beside and made a jersey change impossible without touching the circle. 49.5 is **12% down** from that.
+  - **What sets the floor is the marker text, not the circle.** Only the torso panel can carry text, and the torso is 160 of the asset's 312 viewBox units — 0.513 × the rendered width. The widest role the app generates is **"CM" at 23.34pt** (14px Poppins SemiBold, measured from the shipped `.ttf`); GK is 20.03 and a two-digit shirt number never exceeds 18.1. At 49.5 the torso is 25.4pt seam to seam, leaving a **23.39pt** clear panel — 0.05pt of margin. Below roughly 49.4 the letters start crossing the seam.
+  - **A 20% cut was not achievable.** 45.0pt gives a clear panel of about 21.1pt, well under the 23.34pt the label needs.
+  - **The SVG asset was re-derived to match.** Stroke-width and viewBox are coupled — the stroke sets the stroked bounds, which set the box, which sets the render scale, which sets what the stroke renders as — so they are solved together, not in sequence: `stroke-width="12.606"` in a 312-wide box scales by 49.5/312 and lands at **2.00pt on screen**, parity with the circle marker's 2px border. Because the vertical squash makes the scale non-uniform, one stroke-width cannot render evenly on both axes — the side edges scale by x (2.00pt), the top and bottom by y (1.50pt). It is calibrated to the **sides**, the long visually dominant edges and the ones sitting next to the circle marker's border. Change `jerseyWidth` and re-derive the stroke; the formula lives in `assets/icons/jersey.svg`. (The previous calibration was stroke 11 in a 310-wide box at 56.25.)
 - Height is **75% of its natural aspect**, not the viewBox's. The source art reads as a tank top at marker size; squashing makes it wider than tall, which is how a real shirt reads with the sleeves out.
 - The marker text centers on the **chest, not the bounding box** — the collar eats the top, so box-centered text rides up onto the neck.
 
@@ -626,7 +638,7 @@ A lineup's own `pitchStyle` and `markerStyle` are **record data, not theme** —
 
 The app's own components render the artifact — the same pitch and diagram components the editors use. An export that draws its own version of the pitch is an export that silently stops matching the app.
 
-Canvas geometry is in **absolute points** (30pt markers, 26pt equipment, 2pt pitch lines, a 20pt margin, 13–14pt captions), so drawing straight into a small slot does not shrink a pitch — it inflates everything on it: markers jump from 8% of pitch width to 12%, and the inner margin becomes a fat white gap. Diagrams are therefore drawn at a **360pt reference width** and the *rendered result* is scaled into its slot. Scaling is essentially always down, so it costs nothing in sharpness.
+Canvas geometry is in **absolute points** (24pt canvas markers / 30pt lineup markers, 26pt equipment, 2pt pitch lines, a 20pt margin, 13–14pt captions), so drawing straight into a small slot does not shrink a pitch — it inflates everything on it: markers jump from 8% of pitch width to 12%, and the inner margin becomes a fat white gap. Diagrams are therefore drawn at a **360pt reference width** and the *rendered result* is scaled into its slot. Scaling is essentially always down, so it costs nothing in sharpness.
 
 ### Session PDF pages
 
@@ -745,10 +757,25 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  // captionOutline is the stroke around the player-name letterforms, drawn beneath the fill.
-  // This is the TOTAL stroke width: it is centered on the glyph outline, so the fill covers the
-  // inner half and the visible outline is half this value. See LineupMarker.
-  marker: { diameter: 30, border: 2, captionOutline: { width: 2 } },
+  marker: {
+    // The LINEUP circle marker, and the tool palette's marker-preview and color-swatch chips.
+    diameter: 30,
+    // The DRAWING-CANVAS player marker. Deliberately its own value — the two were one constant
+    // and are now independent, so shrinking one can never move the other. The marker's TOUCH
+    // target is not derived from this; players are hit-tested against a flat HIT_RADIUS.
+    canvasDiameter: 24,
+    // The LINEUP jersey marker's rendered width. Unrelated to either diameter above — it used to
+    // be `diameter * 1.875`. What constrains it is the marker text: the torso is 160 of the
+    // asset's 312 viewBox units, and the widest role the app generates is "CM" at 23.34pt. The
+    // asset's stroke-width is calibrated against THIS number so the outline renders 2pt — change
+    // one and re-derive the other (assets/icons/jersey.svg carries the formula).
+    jerseyWidth: 49.5,
+    border: 2,
+    // The stroke around the player-name letterforms, drawn beneath the fill. This is the TOTAL
+    // stroke width: it is centered on the glyph outline, so the fill covers the inner half and
+    // the visible outline is half this value. See LineupMarker.
+    captionOutline: { width: 2 },
+  },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
   // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the

@@ -68,11 +68,13 @@ Screen / store  ──►  Repository (the only thing that knows about storage) 
 
 There is one repository per data type:
 
-- `activityRepository` — `list()`, `getById(id)`, `create(input)`, `update(id, patch)`, `delete(id)`
+- `activityRepository` — `list()`, `getById(id)`, `create(input)`, `update(id, patch)`, `delete(id)`, `usage(id)`
 - `sessionRepository` — same shape, plus activity ordering
 - `lineupRepository` — same shape
 
 Every screen that needs data calls these methods and nothing else. All SQL lives inside the repositories.
+
+> **`activityRepository.delete` is not a call that always succeeds.** It throws `ActivityInUseError` when the activity is still referenced by a session block. `usage(id)` returns the blocking sessions so a screen can ask before it offers the delete — see the decisions log.
 
 **Why this matters for v2:** when cloud sync arrives, the cloud read/write logic is added *inside* (or alongside) the repositories. Screens keep calling the exact same methods, so the phone touches a handful of repository files instead of every screen — and the **web app reuses the same backend the repositories talk to**. This is what lets us start local without painting ourselves into a corner.
 
@@ -115,7 +117,7 @@ pulse/
 │   │                           # PositionEditSheet, SubEditSheet, LineupSaveSheet
 │   ├── export/                 # See "Export architecture" below
 │   │   ├── exportHost.ts       # Job queue (zustand); renderAndCapture()
-│   │   ├── ExportRenderHost.tsx # Mounts artifacts on-screen so they can be captured
+│   │   ├── ExportRenderHost.tsx # In-tree overlay that mounts artifacts so they can be captured
 │   │   ├── capture.ts          # react-native-view-shot — the ONLY rasterizer
 │   │   ├── pdf.ts              # expo-print — wraps page images into a PDF
 │   │   ├── share.ts            # expo-sharing — hands a file to the share sheet
@@ -151,12 +153,14 @@ pulse/
 │   │   └── index.ts
 │   └── utils/
 │       ├── canvasUtils.ts      # Equipment assets, SVG processing, color helpers
+│       ├── canvasBackgrounds.ts # Background option list + the stored-value resolver
 │       ├── exportUtils.ts      # The only export module screens import
 │       ├── formationSlots.ts   # Formation → slots, role abbreviations, carry-over
 │       ├── shirtNumbers.ts     # Auto-assigned, overridable shirt numbers
 │       ├── labelDisplay.ts     # blank / number / position → marker text
 │       ├── pitchStyles.ts      # PitchStyleValue objects (see design.md §7)
 │       ├── markerStyles.ts     # circle / jersey
+│       ├── activityUsage.ts    # "Used in N sessions" message for a blocked delete
 │       ├── activityTags.ts
 │       ├── blockTypes.ts
 │       ├── coachingPoints.ts   # Shared splitter — one point per line
@@ -176,6 +180,7 @@ pulse/
 │   ├── design.md
 │   └── scope.md
 ├── app.json
+├── eas.json                    # EAS build profiles (development / preview / production)
 ├── tsconfig.json
 └── package.json
 ```
@@ -231,9 +236,13 @@ RootNavigator (Native Stack)
 ### Canvas (shared by activities and lineups)
 
 ```typescript
+// ADDING a member is safe — only a build that knows a value can ever write it. REMOVING one is
+// not, since stored rows keep the old string, so every read path resolves through
+// utils/canvasBackgrounds.ts's resolveCanvasBackground rather than casting. 'middle-third' was
+// removed that way and now resolves to 'final-third'.
 export type CanvasBackground =
   | 'full-pitch' | 'half-pitch' | 'final-third'
-  | 'middle-third' | 'penalty-box' | 'blank'
+  | 'penalty-box' | 'blank' | 'blank-halves' | 'blank-thirds'
 
 // The pitch SURFACE treatment, orthogonal to CanvasBackground (which picks the crop and the
 // markings). Each value maps to a PitchStyleValue in utils/pitchStyles.ts.
@@ -247,6 +256,9 @@ export interface BaseCanvasObject {
   x: number
   y: number
   rotation: number
+  // Retained and still rendered from, but no gesture writes it any more: the scale handle was
+  // removed, so an object's size is fixed once placed. Objects saved while scaling existed keep
+  // their stored value and must keep rendering at it.
   scale: number
   // Paint order relative to every other object AND arrow — a single shared counter across both
   // arrays, so a newly placed object lands above existing arrows and vice versa. Computed from
@@ -283,12 +295,16 @@ export interface Goal extends BaseCanvasObject {
 
 export interface Zone extends BaseCanvasObject {
   type: 'zone'
+  // Set by the placement drag and never changed afterwards — the width/height resize handle was
+  // removed along with the scale handle.
   width: number
   height: number
 }
 
 // Circle counterpart to Zone — a separate per-type interface rather than a 'shape' + variant
 // field, matching the Equipment objects decision below.
+// Removed from the tool palette, but kept exactly as Pole/Ladder/Flag/Disc are kept: saved
+// drills contain these and must keep rendering.
 export interface CircleZone extends BaseCanvasObject {
   type: 'circle-zone'
   radius: number
@@ -557,6 +573,8 @@ CREATE TABLE lineups (
 
 Values that come back from the database are **guarded, not cast**: an unrecognized `pitch_style`, `marker_style` or `label_display` falls back to its default rather than handing the renderer a value it can't resolve.
 
+**`background` now follows the same rule, and adds a retirement path.** Both `lineups.background` and the `background` inside `activities.canvas_data` used to be plain casts to `CanvasBackground`; both now go through `resolveCanvasBackground` (`utils/canvasBackgrounds.ts`), which is what makes *removing* a background value safe. Unrecognized values fall back to `'blank'`; **retired** values map to the closest surviving crop instead — today `'middle-third'` → `'final-third'`. That mapping is chosen for **geometry, not markings**: the two share an aspect ratio exactly, so every stored normalized `x`/`y` lands on the pixel it always did and nothing in the drill reflows. What changes is the markings drawn underneath.
+
 > The schema deliberately mirrors what a server-side Postgres schema would look like (same tables, same columns, UUID keys). When v2 cloud lands, the server schema is a near-copy and the repositories gain an upload path — no local data model changes required.
 
 ### Migrations
@@ -615,15 +633,17 @@ Sessions above **20** activities warn before exporting (every page costs a full 
 
 **Artifacts render at full size to be captured.** `ExportRenderHost` mounts the artifact behind an opaque scrim and captures it there. Full size is a hard requirement: the capture path cannot rasterize an oversized view — it reports success and returns a blank image. Being inside a *presented window* is **not** a requirement, despite what this section used to claim; see the decisions-log row on the export host, which cost several rounds to establish. The host is a plain absolutely-positioned overlay, deliberately **not** a `Modal`, and sits **outside** the navigator so an export never unmounts or re-lays-out the screen it was started from. Jobs are serial by construction: one full-size bitmap alive at a time, which is what bounds memory on a multi-page session.
 
+**The overlay follows the export *run*, not the job.** `job` is per-*capture* and a session export churns it once per page, which made the overlay mount and unmount repeatedly inside a single export. `running` (set by `beginExportRun`/`endExportRun`) is what the coach experiences, so it is what the overlay tracks: one show, one hide, the hide before the share sheet opens. There is exactly one delay left in the host and it is cosmetic: the spinner and its status line are held back **200ms** (`CHROME_DELAY_MS`), so a fast single-diagram export reads as a blink of opaque ground rather than a loading screen that appears and vanishes. It gates only what is *drawn* inside an already-mounted overlay — no capture, teardown or navigation waits on it, so it cannot sequence anything.
+
 **Resolution is bought with layout size, not a capture option.** The capture library's width/height are *points*, rasterized at device scale — so a 1080px-wide artifact means a 360pt layout on a 3x phone, not a 1080pt one.
 
-**Diagrams are drawn at a reference width and scaled.** Canvas geometry is in absolute points (30pt markers, 2pt lines, a 20pt pitch margin), so rendering straight into a small slot doesn't shrink a pitch — it inflates everything on it. `ScaledDiagram` draws at 360pt and scales the result. The same components render in the app and in the export — `CanvasDiagram` and `LineupPitch` are shared by their editor and their template — because an export that draws its own pitch is an export that silently stops matching the app.
+**Diagrams are drawn at a reference width and scaled.** Canvas geometry is in absolute points (24pt canvas markers, 30pt lineup markers, 2pt lines, a 20pt pitch margin), so rendering straight into a small slot doesn't shrink a pitch — it inflates everything on it. `ScaledDiagram` draws at 360pt and scales the result. The same components render in the app and in the export — `CanvasDiagram` and `LineupPitch` are shared by their editor and their template — because an export that draws its own pitch is an export that silently stops matching the app.
 
-**Failures name their stage.** Every export runs through `prepare` → `capture` → `write` → `share`, and a failure reports which one broke. Backing out mid-export (Android's back gesture over the render host) cancels rather than errors. A share sheet resolving tells you nothing about whether the coach actually sent anything, so no success confirmation is ever shown.
+**Failures name their stage.** Every export runs through `prepare` → `capture` → `write` → `share`, and a failure reports which one broke. Backing out mid-export (Android's back gesture over the render host) cancels rather than errors — reaching the host through a **`BackHandler` subscription**, since removing the `Modal` also removed the `onRequestClose` this used to hang off. A long multi-page session export with no way out is the bug that added it in the first place, so the replacement is load-bearing, not incidental. A share sheet resolving tells you nothing about whether the coach actually sent anything, so no success confirmation is ever shown.
 
 **Palette is an argument, not an import.** Templates never import `colors`; they take an `ExportPalette`. Exports are always light today — see the decisions log.
 
-**iOS `NSPhotoLibraryAddUsageDescription`** is declared in `app.json`. There is no media-library dependency; the string is required because the share sheet's own **Save Image** action writes to the photo library. It is the app's only privacy-surface declaration.
+**iOS `NSPhotoLibraryAddUsageDescription`** is declared in `app.json`. There is no media-library dependency; the string is required because the share sheet's own **Save Image** action writes to the photo library. It remains the app's only **privacy**-surface declaration — the `infoPlist` block's other entry, `ITSAppUsesNonExemptEncryption: false`, is an App Store export-compliance answer and touches no user data.
 
 A **shareable cloud link** (recipient opens it cross-platform without the app) is the v2 feature and requires the backend.
 
@@ -639,7 +659,7 @@ A **shareable cloud link** (recipient opens it cross-platform without the app) i
 ### Phase 2 — Session planner (core loop)
 | Session | Deliverable | Done when |
 |---|---|---|
-| 2 | Canvas: backgrounds + object placement | All 6 backgrounds (white pitch, dark line markings); tool palette placeable items are Player (plain + GK + Co presets), Cone, Goal, Mini-goal, and two Balls (BW + colored); equipment rendered from cleaned SVG assets in `assets/icons/`; cone body is recolorable via its `color` field (`fill="currentColor"`); goals/balls keep their own coloring; placed objects can be **dragged to reposition** (no selection/handles/toolbar yet — those are Session 3); equipment sized so all items render smaller than the 30px player marker except the full Goal; `Cone`/`Disc` carry the optional `color` field (cone editing UI is Session 3) |
+| 2 | Canvas: backgrounds + object placement | All backgrounds (white pitch, dark line markings) — 6 at the time, **7 today** since the blank splits arrived and middle-third left; tool palette placeable items are Player (plain + GK + Co presets), Cone, Goal, Mini-goal, and two Balls (BW + colored); equipment rendered from cleaned SVG assets in `assets/icons/`; cone body is recolorable via its `color` field (`fill="currentColor"`); goals/balls keep their own coloring; placed objects can be **dragged to reposition** (no selection/handles/toolbar yet — those are Session 3); equipment sized so all items render smaller than the player marker (30px at the time — see the equipment-sizing row in the decisions log) except the full Goal; `Cone`/`Disc` carry the optional `color` field (cone editing UI is Session 3) |
 | 3 | Canvas: selection + arrows + undo + save | Full interaction; all 4 arrow types; undo/redo; activity saves locally with a thumbnail; appears in Library; unsaved-changes guard on dismiss (confirm before discarding in-progress marks) |
 | 4 | Activity library + Session builder | Drills grid + tag filter; Sessions view with a persistent "+" that opens the builder; create session, add/reorder activities, set block type + coaching points — all persisted locally |
 
@@ -655,7 +675,9 @@ A **shareable cloud link** (recipient opens it cross-platform without the app) i
 
 **Polish, delivered after Session 6.** The polish half of this row landed as its own run of batches, not as part of Session 6: press feedback routed through a single shared `usePressAnimation` hook and applied across the app, input padding routed through the spacing scale, plus the safe-area, sheet-overflow and save-flow fixes recorded in the decisions log below. See `design.md` §10 for the press-feedback spec and its deliberate exclusions.
 
-**Still open.** Two items remain: the **session-builder block card's five controls**, which are still unanimated (a gap, not a decision), and an **EAS build** (there is no `eas.json` in the repo). Also unbuilt from `design.md` §10: the staggered list/empty-state entrance, and reduce-motion support outside press feedback.
+**Still open.** One item remains: the **session-builder block card's five controls**, which are still unanimated (a gap, not a decision). Also unbuilt from `design.md` §10: the staggered list/empty-state entrance, and reduce-motion support outside press feedback.
+
+**EAS build configuration has landed** — `eas.json` defines `development` / `preview` / `production` profiles (`appVersionSource: "remote"`, production auto-increments), `app.json` carries the EAS `projectId`, and `ITSAppUsesNonExemptEncryption: false` is declared for App Store submission. Configured, not yet shipped: no build has been cut from it.
 
 ### v2 (later) — Account-based cloud sync
 Introduce the Go/Postgres/R2 backend and real accounts (JWT), give the repositories a cloud read/write path (last-write-wins on `updated_at`), and build a **web app** that renders the same library. Share-by-link rides along as a feature within the synced product. The phone stays local-first and syncs up/down; screens are untouched. Validate the Skia canvas on web early — it's the one component that needs porting.
@@ -697,10 +719,12 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Navigation | 3 tabs (Library · Training · Lineups), Training in center, no Home tab, no adaptive home content, no raised center Create button | Simpler nav surface; Training is the primary action so it sits center (under the thumb, where the old Create button was); Training tab intercepts its own tabPress to open Canvas directly |
 | Pitch rendering | White fill, dark (`canvasInk`) line markings — not a green turf | Maximum legibility for marks/objects, print-friendly, no new color token needed |
 | Equipment art | Cleaned SVG assets in `assets/icons/` (DOCTYPE/CSS stripped offline, pre-colored); cone body recolorable via `fill="currentColor"` driven by its `color` field; goal & mini-goal as separate assets with black frames; two ball options (BW + colored) | Offline-cleaned SVGs parse natively in Skia (no runtime repair); goals/balls carry their own coloring |
-| Equipment palette (simplified) | Palette = Player (blank/GK/Co), Cone, Goal, Mini-goal, BW ball, Colored ball, Square, Circle, and the 4 arrow types. Pole/Ladder/Flag/Disc dropped from palette, types retained in model | Tighter, less cluttered tool set for a solo coach; easier to size consistently; parked types allow cheap future re-add |
-| Equipment sizing | Normalize by rendered on-canvas footprint (not raw SVG width), since each asset's viewBox/margin differs; all items smaller than the 30px marker except the full Goal | Identical width numbers produced very different visual sizes; normalizing by rendered result is the correct fix |
+| Equipment palette (simplified) | Palette = Player (blank/GK/Co), Cone, Goal, Mini-goal, BW ball, Colored ball, Zone (rectangle), and the 4 arrow types. Pole/Ladder/Flag/Disc dropped from palette, types retained in model. **Circle zone dropped the same way** — see the row below | Tighter, less cluttered tool set for a solo coach; easier to size consistently; parked types allow cheap future re-add |
+| Equipment sizing | Normalize by rendered on-canvas footprint (not raw SVG width), since each asset's viewBox/margin differs; all items smaller than the player marker except the full Goal | Identical width numbers produced very different visual sizes; normalizing by rendered result is the correct fix. **The numbers were calibrated against a 30pt marker and have deliberately not been re-derived** since the canvas marker dropped to 24pt: cone and balls at 17pt now sit closer to it than intended, but re-calibrating every asset would change how every drill already in the library exports, for a hierarchy that still reads. The rule now means "smaller than the marker", not "smaller than 30pt" |
 | Per-object color | Optional `color` on `Cone`, `Disc` **and `PlayerMarker`**; edited from the selection toolbar, preset swatches only | Data model first, UI later worked as planned. Extended to player markers because a two-team drill needs to distinguish sides; label ink flips to white on dark fills so it never goes illegible |
-| Canvas shapes | `Zone` (rectangle) and `CircleZone`, placed by **drag** — touch-down and release are opposite corners, or a diameter's endpoints | A shape's size is the point of it, so placing and sizing are one gesture rather than place-then-resize. Rectangles then resize on width/height independently, the one non-uniform transform on the canvas |
+| Canvas shapes | `Zone` (rectangle) placed by **drag** — touch-down and release are opposite corners. `CircleZone` had the same gesture (a diameter's endpoints) before it left the palette | A shape's size is the point of it, so placing and sizing are one gesture rather than place-then-resize. The drag *is* the sizing: there is no resize afterwards — see the resize-removal row below |
+| Circle zone removed from the palette | Dropped from `PlaceableToolType`; `CircleZone`, its interface and its renderer all stay. Zone is now a **direct-place slot, not a flyout** | Retained exactly the way Pole/Ladder/Flag/Disc are retained: saved drills contain circle zones and must keep rendering, and hit-testing still handles them. Only the placement affordance is gone. With one option left, a popover would be a tap the coach shouldn't have to make |
+| Resize and scale removed | Both the scale handle and the rectangle's independent width/height resize are gone from the selection overlay; `'scale'` and `'resize'` left `InteractionMode`; `scaleObject`/`resizeObject` deleted from the store. **Rotate is the only handle left.** `scale` on `BaseCanvasObject` and `width`/`height` on `Zone` are **retained** | The UI went, not the data. Every already-scaled object in the library still renders from its stored `scale` — the selection outline and rotate handle still multiply by it, and the committed-geometry snapshot still mirrors it — so existing drills render unchanged. An object's size is now fixed at placement: for a rectangle the placement drag sets it, for everything else the asset does |
 | Reposition in Session 2 | Drag-to-move placed objects (no selection box/handles/toolbar) | Placement-refinement so mis-taps are fixable; full selection stays Session 3 |
 | Lineup formations (finalized) | 7v7: 2-3-1, 3-2-1, 3-1-2. 9v9: 3-4-1, 2-5-1, 3-2-3. 11v11: 4-3-3, 4-4-2, 3-5-2. Each + custom | Coach-specified real youth formations; every named formation's numbers sum to squadSize - 1 (GK not counted in the string) |
 | Lineup match date | Field kept (optional) but not surfaced in the Session 5 editor UI | A lineup is identified by name + squad size + formation only, not a fixture date — coach doesn't tie lineups to specific games |
@@ -713,26 +737,44 @@ The MVP needs **no server secrets** — there is no backend. (Cloud config — A
 | Session-activity reordering | Renumber in **two phases** inside the existing transaction: park every row above `MAX(position)`, then write the final `0..n-1` into the range that just emptied | `UNIQUE(session_id, position)` is checked after each statement and SQLite has no deferred form for a non-FK constraint, so a row cannot take a position a sibling still holds — every non-identity reorder threw. Parking first is what makes the intermediate state legal; the transaction keeps it invisible to readers and rolls back whole on failure |
 | Reorder's source of truth | The **stored rows**, not the caller's list. Ids the caller doesn't know keep their relative order and land after the ones it does; ids it names that no longer exist are dropped | The screen reorders optimistically from state that can be a beat behind. Reconciling against the database guarantees every surviving row still gets exactly one of `0..n-1`, whatever the caller sent |
 | Removing a session activity | `removeActivity` compacts the survivors back onto `0..n-1` in the same transaction | A gap would never break a read (positions are only ordered by, never indexed by), but it would leave `position` out of step with the block's index and let `addActivity`'s `MAX(position)+1` drift past the block count |
-| Save flow: sheet dismissal vs. screen dismissal | A **frame boundary** between `setSaveSheetOpen(false)` and `navigation.goBack()`. Acknowledged as a stopgap — see the row below | Dispatched in one batch, the screen starts dismissing while its child `Modal` is still presented, which wedges the presentation hierarchy. **Correction:** an earlier version of this row claimed the canvas save path was safe "because its rAF wait and thumbnail capture already cross a frame". That is false — those awaits happen *before* `setSaveSheetOpen(false)`, so they add no gap between the two calls that matter. `CanvasScreen` has the same pair with **zero** separation. The real defect is that `BottomSheet` **unmounts** its `Modal` (`return null` on `!visible`) instead of dismissing it, which bypasses React Native's `onDismiss` handshake and leaves nothing to wait on. Fix that, then delete the frame boundary — do not stack a second frame on it |
+| Save flow: sheet dismissal vs. screen dismissal | A **frame boundary** between `setSaveSheetOpen(false)` and `navigation.goBack()`. Acknowledged as a stopgap — see the row below | Dispatched in one batch, the screen starts dismissing while its child `Modal` is still presented, which wedges the presentation hierarchy. **Correction:** an earlier version of this row claimed the canvas save path was safe "because its rAF wait and thumbnail capture already cross a frame". That is false — those awaits happen *before* `setSaveSheetOpen(false)`, so they add no gap between the two calls that matter. `CanvasScreen` has the same pair with **zero** separation. The real defect is that `BottomSheet` **unmounts** its `Modal` (`return null` on `!visible`) instead of dismissing it, which bypasses React Native's `onDismiss` handshake and leaves nothing to wait on. **There are now two stopgaps over that one defect** — this frame boundary and `useShareExport`'s 300ms `MODAL_DISMISS_MS` — which is why it is also filed under Known open issues. Fix the sheet, then delete both; do not stack a third timing guess on them |
 | Sheets that overflow the screen | The sheet caps its own content in a `ScrollView` with a `maxHeight` budgeted against the shortest supported phone; `BottomSheet` itself does not scroll | Two sheets have now needed this independently (Edit activity 480, Save activity 280). The caps differ because a sheet that **autofocuses** a field has the keyboard up on open and far less room — and must also set `keyboardShouldPersistTaps="handled"`, or the first tap on any control is eaten by the keyboard dismissal. **If a third sheet needs it, move the pattern into `BottomSheet`** rather than hand-tuning a third copy |
 | Player edit sheet autofocus | `PositionEditSheet` no longer autofocuses; it opens with the keyboard down | The reported "text arrives preselected" was emergent, not a selection bug: `autoFocus` fired while the controlled value was still empty and the real value landed one render later. Removing the autofocus removes the race. The canvas Save sheet **still** autofocuses by design — which is exactly what couples it to the tighter 280 cap above |
 | Canvas color | An **armed tool** in the tray, not a per-object action in the selection toolbar. Only `Cone`, `Disc` and `PlayerMarker` are colorable; balls, goals, zones and arrows are not. The armed color repaints each colorable object tapped, never selects, no-ops on anything else, and does **not** inherit to newly placed objects. Exit is re-tapping the armed swatch | Recoloring is usually done to several objects in a row, which a stayed-armed tool serves and a select-then-act toolbar does not. Keeping it out of `createDefaultObject` is what stops "armed" from quietly becoming "default". The toolbar's Color action was removed in the same change |
 | Player marker default fill | Black (`colors.canvasInk`), stamped **explicitly onto the object at creation** — not by moving the renderer's `color ?? colors.surface` fallback | Moving the fallback would repaint every marker already in the library, and leave each saved drill disagreeing with its own stored thumbnail PNG, which was captured white. Old drills keep white markers; only new ones come out black. The label-ink contrast flip is unchanged, so the common case simply inverted: new markers carry white ink, legacy white ones keep dark |
 | Lineup caption legibility | A **stroked SVG outline** around the letterforms, replacing the low-alpha halo. Drawn twice — a stroke-only copy at double width beneath the filled copy | `react-native-svg` has no paint-order support, so a single stroked text node paints the stroke *over* its own fill and thickens 13px type into mush; double-drawing leaves only the outer half of the stroke. Near-opaque, because a 1pt stroke at low alpha lets a stripe seam read straight through. **Trade:** SVG text does not ellipsize — long names now clip at ~14 characters with no `…`, where the RN text ellipsized at ~10 |
-| Export host is an overlay, not a `Modal` | `ExportRenderHost` renders an absolutely-positioned view. Its lifetime follows the export **run** (`running`), not `job` — one show, one hide, the hide before the share sheet | **Established on device by instrumentation after three wrong theories — read this before touching the export path.** The Modal presented from the **react root view controller**, which is already presenting whenever the coach is inside a `fullScreenModal` editor. From those screens its presentation was deferred until the editor was dismissed — measured at **4.1–4.8s**, with `onShow` landing *after* `beforeRemove`. That deferred present/dismiss pair arriving mid-screen-dismissal is what wedged UIKit (whole app dead, relaunch only), and after a partial fix, what flickered on exit. **The capture never needed a presented window:** every export from an editor was captured while the Modal had not presented, and every PNG was correct — which is what made removing it possible. A plain view has no view controller and no presentation chain. Ruled out along the way, don't re-derive: child-sheet teardown; the share sheet landing on the wrong VC via `expo-sharing`'s `currentViewController()`; and gating the editors' own dismissal on host teardown (reverted — it was inert, since it waited on an `onShow` that never came) |
+| Export host is an overlay, not a `Modal` | `ExportRenderHost` renders an absolutely-positioned view. Its lifetime follows the export **run** (`running`), not `job` — one show, one hide, the hide before the share sheet. `awaitingPresentation` is **gone**: it existed only to sequence work behind the Modal's `onShow`, and with no presentation to wait on there is nothing left to await. Android's back-out moved from the Modal's `onRequestClose` to a **`BackHandler` subscription**; the spinner and status line are held back **200ms**, cosmetic only | **Established on device by instrumentation after several wrong theories — read this before touching the export path.** The premise the old design rested on was false: the capture does **not** require a presented window, and both this document and the file's own comment used to assert that it did. The actual bug is structural — `ExportRenderHost` sits *outside* the navigator, so its Modal presented from the **react root view controller**, which is already presenting the editor screen whenever the coach is inside a `fullScreenModal` editor. Two systems presenting on one chain, neither aware of the other, so from an editor the host's presentation was simply **deferred until the editor left**. Measured: presentation completed **~4.5s** after being asked, and **~627ms *after* the editor was dismissed** — i.e. it landed after the exit rather than during the export. That deferred present/dismiss pair is what wedged UIKit (whole app dead, relaunch only), and after a partial fix, what flickered on exit. **The capture never needed a presented window:** every export from an editor was captured while the Modal had not presented, and every one of those PNGs was correct — which is what made removing it possible. A plain view has no view controller and no presentation chain, so none of it is reachable. **Ruled out by instrumentation, don't re-derive:** (1) that the **share sheet was holding the presentation** — it was not; the deferral is entirely upstream of the share sheet, and the related wrong-VC theory (`expo-sharing`'s `currentViewController()`) went with it; (2) that the **flicker was a rendering tail unmasked by removing the fade** — it was not; it was the deferred present/dismiss pair arriving late. Also ruled out earlier: child-sheet teardown, and gating the editors' own dismissal on host teardown (reverted — inert, since it waited on an `onShow` that never came) |
 | Safe-area on the four tab-stack screens | `react-native-safe-area-context`'s `SafeAreaView` with `edges={['top']}`. Every other consumer already used the `useSafeAreaInsets` hook and was left alone | The bottom edge is excluded deliberately: safe-area-context resolves insets **provider-relative**, and the tab bar already pays `insets.bottom`, so an all-edges swap pays it twice — about 34pt of dead space on iOS. On Android the move also corrected a pre-existing edge-to-edge bug where those four title rows drew under the status bar. |
+| Canvas marker sized independently of the lineup marker | New `canvas.marker.canvasDiameter: 24` for the **drawing-canvas** player marker. `canvas.marker.diameter: 30` still drives the **lineup** circle marker and the tool palette's preview/swatch chips. The canvas marker's label moved to `typography.caption` + `fonts.semibold` | The two were one constant and are now two, so shrinking one can never move the other. The label had to follow the shape: a 24pt marker with a 2pt border leaves 20pt of clear interior, and "GK" — the wider of the palette's two presets — measures 20.0pt at `label`'s 14px against 18.6pt at caption's 13px. The lineup marker keeps `typography.label`; it is still 30pt and has the room. The marker's **touch target is not derived from this** — players are hit-tested against a flat `HIT_RADIUS`, so the tap area stays 44pt-plus however small the visual gets |
+| Lineup jersey decoupled from marker diameter | `canvas.marker.jerseyWidth: 49.5` — an independent token with **no arithmetic relationship** to either diameter. Down 12% from the old `diameter * 1.875` (56.25) | The old derivation coupled the jersey to a marker it merely sits beside, making a jersey change impossible without touching the circle. What actually constrains the size is the marker text: only the torso panel can carry it, the torso is 160 of the asset's 312 viewBox units (0.513 × width), and the widest role the app generates is **"CM" at 23.34pt** (14px Poppins SemiBold, measured from the shipped `.ttf`). At 49.5 the torso is 25.4pt seam-to-seam, leaving a clear panel of **23.39pt** — 0.05pt of margin. **A 20% cut was not achievable:** 45.0pt gives a ~21.1pt clear panel and the letters cross the seams; the floor is roughly 49.4. The SVG asset was re-derived to match, since stroke-width and viewBox are coupled (stroke sets the stroked bounds, which set the box, which set the render scale, which sets what the stroke renders as) — solved together at `stroke-width="12.606"` in a 312-wide box so the on-screen stroke stays **2pt**, matching the circle marker's border. Change one and re-derive the other; the formula is in `assets/icons/jersey.svg` |
+| Canvas backgrounds: blank splits in, middle-third out | Added `blank-halves` and `blank-thirds` (horizontal dividers on the blank surface, taking blank's frame and aspect exactly). Removed `middle-third`. New `utils/canvasBackgrounds.ts` owns the option list, `isCanvasBackground` and `resolveCanvasBackground`, wired into **both** `activityRepository` and `lineupRepository` | Adding a member is always safe; **removing one is not**, because stored rows keep the old string — which is why the resolver had to exist before the removal could. The splits get blank's frame and no touchline rect or markings, listed explicitly in `getPitchAspectRatio` rather than left to fall through `default`, so the shared shape is a decision and not an accident. Their dividers run the **full frame width** rather than inset by the margin: `blank` has no inset play area to align to, and a divider stopping short would read as a pitch marking rather than a division of the surface |
+| Drag travel is measured from touch-down, not from `translation` | Every gate (`onUpdate`, `onTouchesUp`, `onEnd`) and every commit measures from `touchDownPoint`, captured in `onBegin` and never rebased. `dragQualified` is the **single** tap-vs-drag verdict, latched once and read by all three | RNGH rebases translation to zero at activation, so `event.translationX/Y` discards the travel already spent when the gesture activated — see the Known-open-issues rewrite below for the full measurements. Keeping one quantity, one origin and one threshold is what removes the dead band; asking the same question twice from two positions is what let an out-and-back drag disagree with itself |
+| Activity delete is guarded in the repository | `activityRepository.delete` throws `ActivityInUseError` (carrying the blocking sessions) instead of letting the foreign key refuse. `usage(id)` exposes the same query so a screen can ask *before* offering the delete. Check and delete share **one transaction** | `session_activities.activity_id` declares no `ON DELETE` clause, so the constraint already blocked this — but it surfaced as an opaque `Error code 19: FOREIGN KEY constraint failed` that no screen could turn into a sentence. Refusing in-repository gives the same outcome with the blocking sessions attached, and the constraint stays underneath as the backstop. One transaction is what stops the guard going stale between check and delete. `sessionsUsingActivity` uses `EXISTS`, not a `JOIN`: one activity can legitimately be several blocks in the same session, and a count that exceeded the number of sessions the coach actually has to go edit would be worse than no count |
 
 ---
 
 ## Known open issues
 
-Reproducible defects that are **not** fixed and not currently scheduled. Recorded here so they aren't rediscovered from scratch. Device testing is Santiago's — hand him a checklist rather than automating it.
+Reproducible defects that are **not** fixed and not currently scheduled, plus one that is fixed and whose diagnosis is worth keeping. Recorded here so they aren't rediscovered from scratch. Device testing is Santiago's — hand him a checklist rather than automating it.
 
-### Canvas: very small drags snap back
+### ~~Canvas: very small drags snap back~~ — FIXED
 
-Dragging a placed object a **short** distance leaves it at its original position — the object follows the finger and then snaps back on release. A larger drag commits normally, so the failure is confined to low-travel gestures, where the canvas has to decide between "tap" and "drag".
+**Resolved.** Kept here because the cause is worth not re-deriving, and because the previous entry was wrong about the history: it claimed "a fix was attempted and reverted". That is false — `a39cf66` was **never reverted**, and its mechanism (hold the live preview until the drag clears `TAP_SLOP`) is still in the gesture hook. Two further defects sat underneath it.
 
-A fix was attempted and reverted. **Treat this as open**, and confirm on device before assuming any change to the gesture hook has addressed it.
+**The cause.** RNGH rebases translation to zero at activation, so `event.translationX/Y` discards the travel already spent when the gesture activated. On iOS, `.minDistance(0)` is read as `minDistSq = 0`, which makes `_hasCustomActivationCriteria` true, so the first `touchesMoved` fires `setTranslation:CGPointZero` (`RNPanHandler.m`). On Android, `activate()` calls `resetProgress()` — `startX = lastX` (`PanGestureHandler.kt`). Whatever the finger covered in that first sample is discarded and never comes back, so translation is short by a **fixed offset for the rest of the gesture**.
+
+Measured on device, that offset ran **1.7–29.1pt, median 10.6**. Two consequences:
+
+- **A dead band.** Three gates were measuring two different quantities from two different origins, so a gesture could paint nothing, select nothing and commit nothing. Against a `TAP_SLOP` of 8, the real travel needed was **8 → 18.6pt at the median, 8 → 37.1pt at worst**.
+- **Every committed drag landed short**, by that same fixed 10–29pt — a median of **73%** of the finger's actual travel, **46%** at worst. Invisible on a 480pt drag (3% lost), fatal on a 29pt one.
+
+**The fix.** Measure every gate *and* the commit from `touchDownPoint`, which is captured in `onBegin` and is never rebased. One quantity, one origin, one threshold: no dead band, and the object tracks the finger exactly.
+
+**A second defect surfaced in the same data.** The tap-vs-drag question was being answered twice — latched in `onUpdate` for painting, then re-asked from the final position by `onTouchesUp` and `onEnd` — and the two could disagree on an out-and-back drag. Measured: a finger travelling 24.5pt out and returning to within 5.0pt of touch-down painted the object all the way out, then had the endpoint re-read as a tap, reset to idle and selected — and the object snapped home. Fixed by making **`dragQualified` the single verdict**: latched the moment travel first clears `TAP_SLOP`, never unlatched, read by all three callbacks. A gesture that ever became a drag stays a drag and commits wherever the finger left it.
+
+`MIN_ARROW_LENGTH` deliberately **stays a distance test** on the finished gesture. It asks a different question from `TAP_SLOP` — not "was this a drag or a tap" but "is this arrow long enough to be worth creating" — so it is not a latch.
+
+> **Considered and rejected: dropping `.minDistance(0)`.** It would fix iOS only, since Android rebases in `resetProgress()` regardless. *(Santiago's call — the platform asymmetry is documented in the hook, the decision itself is recorded here from him.)*
 
 ### Canvas: tapping to deselect also places an object
 
@@ -747,4 +789,25 @@ Already ruled out by reading the source — don't re-derive:
 - **There is no second placement entry point.** `onPlace` has exactly one caller: the `tool.kind === 'place'` branch in `onBegin`.
 - **`SelectionOverlay` doesn't swallow or redirect the tap** — it is `pointerEvents="none"`/`box-none` except its two toolbar buttons.
 
-Leading unverified hypothesis: a mid-touch handler reconfigure produces a **second `onBegin` within one physical touch**, which falls through to the place branch. When this is picked back up, get that discriminating datum first — instrument whether `onBegin` fires once or twice for the offending tap — before changing any code.
+**Ruled out by instrumentation — this was the leading hypothesis and it is dead.** The theory was that a mid-touch handler reconfigure produced a **second `onBegin` within one physical touch**, which fell through to the place branch. Temporary instrumentation (added in `53b4c44`, removed in `0460fab`) measured `begins = 1` on **every** gesture across three rounds on device. One touch, one `onBegin`. Do not re-derive this; find a different mechanism.
+
+*(The instrumentation output was never committed, so this result is recorded from Santiago's device runs, not from anything in the repo.)*
+
+What remains true and unexplained: `onBegin`'s fall-through genuinely contains both branches — `tool.kind === 'place'` fires `onPlace` on touch-down and `tool.kind === 'select'` deselects — and no `if (selected)` guard exists, having been tried and reverted twice. The next lead has to explain how one `onBegin` reaches the place branch on a tap the coach intended as a deselect.
+
+### Sheets bypass React Native's modal dismissal handshake
+
+`BottomSheet` **unmounts** its `Modal` — `return null` on `!visible`, before the `Modal` is ever driven to `visible={false}` — so RN's `onDismiss` never fires and callers have no event to wait on. This is the same class of defect as the export-host Modal that was just removed: something is torn out of the presentation chain rather than dismissed through it.
+
+Two timing stopgaps currently paper over it, and **both should be deleted once the sheet is fixed**, not extended:
+
+- `LineupEditorScreen`'s frame boundary (`cc7a7b1`) between `setSaveSheetOpen(false)` and `navigation.goBack()`. `CanvasScreen` has the identical pair with **zero** separation and is exposed, not protected.
+- `useShareExport`'s 300ms `MODAL_DISMISS_MS`. Note its comment is now stale on its own premise — it justifies the wait partly by "`ExportRenderHost` presents another [Modal]", which stopped being true when the host became an overlay.
+
+The fix is to drive `visible` to `false`, keep the `Modal` mounted through its dismissal, and hand callers the real `onDismiss`. See the save-flow row in the decisions log.
+
+### Saved drills' thumbnails diverge from their exports
+
+A known consequence, not a bug to hunt. Stored thumbnails show **30pt markers** and **middle-third markings**; the same drill's *export* re-renders at **24pt** and falls back to **final-third**. Both changes are correct going forward — the thumbnail is simply a photograph of how the drill looked when it was saved.
+
+It cannot currently be fixed cheaply: thumbnails are captured exactly once, at save (`captureCanvasThumbnail`, called only from the canvas save path), and a saved drill **cannot be reopened on the canvas** — the `Canvas` route takes no params and neither caller passes an activity. Re-capturing on open is therefore the only real fix, and it needs the reopen path to exist first. A decision for a later session.
