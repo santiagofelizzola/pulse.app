@@ -19,21 +19,24 @@ interface MarkerVisualProps {
 const DIAMETER = canvas.marker.diameter
 
 // The asset's viewBox is cropped to its exact stroked ink (see assets/icons/jersey.svg), so
-// these ARE the ink's true proportions — no hidden margin to correct for.
-const JERSEY_VIEWBOX = { width: 310, height: 350 }
+// these ARE the ink's true proportions — no hidden margin to correct for. It tracks the asset's
+// stroke width, which is calibrated against JERSEY_WIDTH, so both move together.
+const JERSEY_VIEWBOX = { width: 312, height: 352 }
 
-// The jersey renders deliberately LARGER than the circle rather than matching its 30px, and the
-// marker text sets the floor on how small it can go (a two-letter role like "CM" is the widest
-// case — a shirt number is narrower and never the binding constraint). Only the torso panel can carry that text, and
-// the torso is exactly half the asset's full width (x 176-336 of 107-405 — sleeves take the
-// other half), so a jersey scaled to the circle's 30px leaves a ~15px torso for text needing
-// ~22px ("CM" at typography.label's 14px) and the label spills onto the sleeves. 1.875x puts the
-// torso at ~29px, comfortably clear of that floor. Sized by width; height follows from the
-// aspect, so the shape never distorts. This is the one knob to turn for overall jersey size —
-// but the outline stroke in the asset is calibrated against it, so re-derive that too (the SVG
-// comment carries the formula).
-const JERSEY_SCALE = 1.875
-const JERSEY_WIDTH = DIAMETER * JERSEY_SCALE
+// The jersey's size is now its own token, with no arithmetic relationship to either marker
+// diameter — it used to be `DIAMETER * 1.875`, which made a jersey change impossible without
+// touching the circle marker it merely sits beside.
+//
+// What sets the floor is the marker text, not the circle. Only the torso panel can carry that
+// text, and the torso is 160 of the asset's 312 viewBox units (x 176-336; the sleeves take the
+// rest), so the rendered torso is 0.513 x JERSEY_WIDTH, seam centre to seam centre. The widest
+// role this app generates is "CM" — 23.34pt at typography.label's 14px Poppins SemiBold,
+// measured from the shipped .ttf; GK is 20.03 and a two-digit shirt number never exceeds 18.1.
+// At 49.5 the torso is 25.4pt, so "CM" clears the seams by 2.0pt and clears the *inside* of the
+// 2pt seam strokes by 0.05pt. Below roughly 49.4 the letters start crossing the seam.
+//
+// Sized by width; height follows from the aspect, so the shape never distorts.
+const JERSEY_WIDTH = canvas.marker.jerseyWidth
 
 // Height is deliberately NOT the viewBox aspect: the source art is a long, narrow shirt that
 // reads as a tank top at marker size, so it's squashed to 75% of its natural height. That makes
@@ -46,12 +49,12 @@ const JERSEY_HEIGHT =
 
 // A jersey's optical center is not its geometric one: the collar eats the top of the box, so
 // text centered in the bounding box rides up onto the neck. Centering instead between the collar
-// bottom (y=116) and the hem (y=410) puts the chest at (263-66)/350 = 0.563 of the ink box —
-// 0.063 below the 0.5 the container would otherwise center on. Expressed as a ratio of the
+// bottom (y=116) and the hem (y=410) puts the chest at (263-65)/352 = 0.5625 of the ink box —
+// 0.0625 below the 0.5 the container would otherwise center on. Expressed as a ratio of the
 // RENDERED height, so it survives the vertical squash above without needing to be re-derived.
 // Applied to the marker text only; the shape itself stays centered so the marker's drag anchor is
 // still its middle.
-const JERSEY_LABEL_OFFSET = JERSEY_HEIGHT * 0.063
+const JERSEY_LABEL_OFFSET = JERSEY_HEIGHT * 0.0625
 
 // Marker footprints differ by style, so LineupMarker has to ask rather than assume 30px — it
 // anchors the marker on the stored position by offsetting half this height (see its

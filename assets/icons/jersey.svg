@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="310" height="350" viewBox="101 66 310 350" preserveAspectRatio="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="312" height="352" viewBox="100 65 312 352" preserveAspectRatio="none">
   <title>Soccer Jersey Icon</title>
   <desc>Clean jersey icon based on the uploaded lineup screenshot.</desc>
 
@@ -12,17 +12,24 @@
        against a light pitch, independent of the kit color — see applyJerseyColors.
 
        viewBox is cropped to the path's stroked bounds with no meaningful slack: the body path
-       spans x:107-405, y:72-410, and this stroke adds half its width (5.5) on every side —
-       giving 101,66 310x350. Zero margin matters because MarkerVisual sizes the jersey by this
-       box, so any padding baked in here shrinks the rendered jersey. (The original 0 0 512 512
-       viewBox was ~35% margin, which is what made the jersey render smaller than the circle.)
+       spans x:107-405, y:72-410, and this stroke adds half its width (6.303) on every side,
+       rounded outward to integers — giving 100,65 312x352. Zero margin matters because
+       MarkerVisual sizes the jersey by this box, so any padding baked in here shrinks the
+       rendered jersey. (The original 0 0 512 512 viewBox was ~35% margin, which is what made the
+       jersey render smaller than the circle.)
 
        stroke-width is calibrated against the render scale, not authored at face value: the
-       jersey renders 56.25px wide (MarkerVisual's JERSEY_WIDTH), so this box scales by
-       56.25/310 = 0.181 and 11 lands at 2.00px on screen — parity with the circle marker's 2px
-       border (canvas.marker.border). Same calibration problem BALL_STROKE_MULTIPLIER solves for
-       the ball icons. Note the two are coupled: changing stroke-width also moves the stroked
-       bounds above, so re-derive both together — stroke = 2 / (JERSEY_WIDTH / viewBoxWidth).
+       jersey renders 49.5px wide (canvas.marker.jerseyWidth, read by MarkerVisual), so this box
+       scales by 49.5/312 = 0.1587 and 12.606 lands at 2.00px on screen — parity with the circle
+       marker's 2px border (canvas.marker.border). Same calibration problem BALL_STROKE_MULTIPLIER
+       solves for the ball icons.
+
+       The two are COUPLED and must be solved together, not in sequence: stroke-width sets the
+       stroked bounds, which set viewBoxWidth, which sets the scale, which sets what stroke-width
+       renders as. Solve stroke = 2 * viewBoxWidth / JERSEY_WIDTH with viewBoxWidth = 298 + stroke
+       rounded outward, then check it lands back on the same integer box. (At 49.5 that is
+       stroke 12.606 -> bounds 100.697..411.303 -> box 100..412 = 312. Consistent.) The previous
+       calibration was stroke 11 in a 310-wide box at JERSEY_WIDTH 56.25.
 
        Because the vertical squash makes the scale non-uniform, one stroke-width cannot render
        evenly on both axes: side edges scale by x (2.00px), top/bottom by y (1.50px). Calibrated
@@ -49,7 +56,7 @@
        Z"
     fill="currentColor"
     stroke="OUTLINE_TOKEN"
-    stroke-width="11"
+    stroke-width="12.606"
     stroke-linejoin="round"
   />
 
@@ -57,14 +64,15 @@
        drawn outline, not a garment detail sitting on top of it. It was originally a fixed white,
        which read as a hole punched in the jersey (and vanished entirely on a white kit); tying it
        to the outline stroke makes the whole silhouette read as one outlined shape at marker size.
-       Slightly thinner than the body stroke (8 vs 11) so it reads as an interior line. -->
+       Slightly thinner than the body stroke, holding the original 8:11 ratio (12.606 * 8/11 =
+       9.168), so it keeps rendering at the same ~1.45px interior line it always did. -->
   <path
     d="M218 84
        C226 105 239 116 256 116
        C273 116 286 105 294 84"
     fill="none"
     stroke="OUTLINE_TOKEN"
-    stroke-width="8"
+    stroke-width="9.168"
     stroke-linecap="round"
   />
 </svg>

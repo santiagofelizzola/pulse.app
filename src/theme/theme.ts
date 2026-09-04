@@ -103,6 +103,15 @@ export const canvas = {
     // derived from this — useCanvasGestures hit-tests players against the flat HIT_RADIUS — so
     // the tap area stays 44pt-plus however small the visual gets.
     canvasDiameter: 24,
+    // The LINEUP jersey marker's rendered width. An independent size, deliberately unrelated to
+    // either diameter above — it used to be `diameter * 1.875`, which coupled the jersey to a
+    // marker it only ever sat beside. What actually constrains it is the marker text: only the
+    // torso panel can carry that text, the torso is 160 of the asset's 312 viewBox units, and
+    // the widest role the app generates is "CM" at 23.34pt (14px Poppins SemiBold, measured).
+    // 49.5 puts the torso at 25.4pt seam to seam. The asset's stroke-width is calibrated against
+    // THIS number so the outline renders 2pt like the circle marker's border — change one and
+    // re-derive the other (assets/icons/jersey.svg carries the formula).
+    jerseyWidth: 49.5,
     border: 2,
     // The stroke around the player-name letterforms, drawn beneath the fill. This is the TOTAL
     // stroke width: it is centered on the glyph outline, so the fill covers the inner half and
