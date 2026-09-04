@@ -13,7 +13,8 @@ interface PlayerMarkerOverlayProps {
   committed: SharedValue<CommittedSnapshot>
 }
 
-const DIAMETER = canvas.marker.diameter
+// The canvas marker's own size, not the lineup marker's — see canvas.marker in theme.ts.
+const DIAMETER = canvas.marker.canvasDiameter
 
 export function PlayerMarkerOverlay({ object, canvasSize, interaction, committed }: PlayerMarkerOverlayProps) {
   const style = useAnimatedStyle(() => {
@@ -61,8 +62,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // typography.caption (13px), not the label scale the lineup marker uses: a 24pt marker with a
+  // 2pt border leaves 20pt of clear interior, and "GK" — the widest of the palette's two preset
+  // labels — measures 20.0pt at label's 14px and 18.6pt at 13px. The lineup marker keeps
+  // typography.label; it is still 30pt and has the room.
   label: {
-    ...typography.label,
+    ...typography.caption,
     fontFamily: fonts.semibold,
   },
 })

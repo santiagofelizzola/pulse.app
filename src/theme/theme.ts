@@ -92,10 +92,23 @@ export const shadow = {
 } as const;
 
 export const canvas = {
-  // captionOutline is the stroke around the player-name letterforms, drawn beneath the fill.
-  // This is the TOTAL stroke width: it is centered on the glyph outline, so the fill covers the
-  // inner half and the visible outline is half this value. See LineupMarker.
-  marker: { diameter: 30, border: 2, captionOutline: { width: 2 } },
+  marker: {
+    // The LINEUP circle marker (MarkerVisual), and the tool palette's marker-preview and
+    // color-swatch chips — a 30pt chip centered in a 44pt button, holding a 14px "GK".
+    diameter: 30,
+    // The DRAWING-CANVAS player marker (PlayerMarkerOverlay, and getObjectFootprint's 'player'
+    // case, which sizes the selection outline and places the rotate handle). Deliberately its
+    // own value: the canvas marker and the lineup marker were one constant and are now
+    // independent, so shrinking one can never move the other. The marker's TOUCH target is not
+    // derived from this — useCanvasGestures hit-tests players against the flat HIT_RADIUS — so
+    // the tap area stays 44pt-plus however small the visual gets.
+    canvasDiameter: 24,
+    border: 2,
+    // The stroke around the player-name letterforms, drawn beneath the fill. This is the TOTAL
+    // stroke width: it is centered on the glyph outline, so the fill covers the inner half and
+    // the visible outline is half this value. See LineupMarker.
+    captionOutline: { width: 2 },
+  },
   equipment: { size: 26 },
   pitchLine: { width: 2 },
   // Pitch surface palette. Consumed only by utils/pitchStyles.ts, which assembles these into the

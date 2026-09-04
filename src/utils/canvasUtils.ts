@@ -127,9 +127,11 @@ const BALL_STROKE_MULTIPLIER = 3
 // nativeWidth across assets produces the same visual footprint. See CanvasObject.tsx for how
 // it's applied (scale = nativeWidth / svg.width(), i.e. against the SVG's own declared size —
 // the calibration is baked into the numbers below, not computed at render time).
-// Sizing rule (design.md §7): the 30px player marker is the largest thing on the canvas except
-// the full Goal, which stays large by design (~1.3-1.5x a marker); everything else — cone, both
-// balls, mini-goal — is calibrated to render clearly smaller than a marker (~20-24px).
+// Sizing rule (design.md §7): equipment is calibrated to render clearly smaller than the player
+// marker, the full Goal excepted — it stays large by design. These numbers were calibrated
+// against a 30pt marker; the canvas marker is now 24pt (canvas.marker.canvasDiameter), so cone
+// and balls at 17pt sit closer to it than they did. Deliberately left alone: re-calibrating
+// every asset would change how every saved drill exports, for a hierarchy that still reads.
 export const EQUIPMENT_ASSETS = {
   cone: {
     module: require('../../assets/icons/cone.svg') as number,
@@ -310,7 +312,8 @@ export function getObjectFootprint(object: PlacedObject, canvasSize: CanvasSize)
   'worklet'
   switch (object.type) {
     case 'player':
-      return { width: canvas.marker.diameter, height: canvas.marker.diameter }
+      // The canvas marker's diameter, not the lineup one — see canvas.marker in theme.ts.
+      return { width: canvas.marker.canvasDiameter, height: canvas.marker.canvasDiameter }
     case 'goal':
       return { width: object.width * canvasSize.width, height: object.width * canvasSize.width * GOAL_ASPECT }
     case 'mini-goal':
