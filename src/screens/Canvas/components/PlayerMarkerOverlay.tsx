@@ -33,12 +33,13 @@ export function PlayerMarkerOverlay({ object, canvasSize, interaction, committed
     const x = isTarget && live.mode === 'move' ? live.startX + live.dx : baseX
     const y = isTarget && live.mode === 'move' ? live.startY + live.dy : baseY
     const rotation = isTarget && live.mode === 'rotate' ? live.rotation : baseRotation
-    const scale = isTarget && live.mode === 'scale' ? live.scale : baseScale
+    // Scale has no live case — there is no scale gesture. It is read straight from committed
+    // state so a marker saved with a stored scale keeps rendering at that size.
 
     return {
       left: x - DIAMETER / 2,
       top: y - DIAMETER / 2,
-      transform: [{ rotate: `${rotation}rad` }, { scale }],
+      transform: [{ rotate: `${rotation}rad` }, { scale: baseScale }],
     }
   })
 

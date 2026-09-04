@@ -78,29 +78,24 @@ function EquipmentSvgShape({
   )
 }
 
-// Rectangle shape (Shapes tool). Unlike every other object, its footprint resizes
-// independently in width/height rather than through the shared uniform `scale` multiplier —
-// see useCanvasGestures.ts's 'resize' mode — so its dimensions are read from the live
-// interaction state directly, the same way CanvasObject's `transform` reads live dx/dy/rotation.
+// Rectangle shape (Shapes tool). Unlike every other object its footprint is stored as
+// width/height rather than as a uniform `scale` multiplier — set by the placement drag and
+// fixed from then on, since the resize handle is gone. Dimensions still come from the
+// `committed` snapshot rather than the prop for the reason the transform below does: a zone
+// dragged to a new position re-commits across the same Skia reconciler boundary.
 function ZoneShape({
   object,
   canvasSize,
-  interaction,
   committed,
 }: {
   object: Extract<PlacedObject, { type: 'zone' }>
   canvasSize: { width: number; height: number }
-  interaction: SharedValue<InteractionState>
   committed: SharedValue<CommittedSnapshot>
 }) {
   const rect = useDerivedValue(() => {
-    const live = interaction.value
-    const isResizing = live.targetId === object.id && live.mode === 'resize'
-    // Committed width/height read from the snapshot for the same reason as the transform above
-    // — a resize commit hands off across the same reconciler boundary a move does.
     const c = committed.value.objects[object.id]
-    const width = isResizing ? live.resizeWidth : (c ? c.width : object.width) * canvasSize.width
-    const height = isResizing ? live.resizeHeight : (c ? c.height : object.height) * canvasSize.height
+    const width = (c ? c.width : object.width) * canvasSize.width
+    const height = (c ? c.height : object.height) * canvasSize.height
     return Skia.XYWHRect(-width / 2, -height / 2, width, height)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [object.id, object.width, object.height, canvasSize.width, canvasSize.height])
@@ -108,7 +103,7 @@ function ZoneShape({
   return <Rect rect={rect} color={colors.canvasInk} style="stroke" strokeWidth={1} />
 }
 
-// Circle shape (Shapes tool) — resizes uniformly via the outer Group's `transform`, same as
+// Circle shape (Shapes tool) — scales uniformly via the outer Group's `transform`, same as
 // every non-zone object, so no live-interaction read is needed here.
 function CircleZoneShape({
   object,
@@ -142,9 +137,10 @@ export function CanvasObject({ object, canvasSize, interaction, committed }: Can
     const x = isTarget && live.mode === 'move' ? live.startX + live.dx : baseX
     const y = isTarget && live.mode === 'move' ? live.startY + live.dy : baseY
     const rotation = isTarget && live.mode === 'rotate' ? live.rotation : baseRotation
-    const scale = isTarget && live.mode === 'scale' ? live.scale : baseScale
+    // Scale has no live case — there is no scale gesture. It is read straight from committed
+    // state so an object saved with a stored scale keeps rendering at that size.
 
-    return [{ translateX: x }, { translateY: y }, { rotate: rotation }, { scale }]
+    return [{ translateX: x }, { translateY: y }, { rotate: rotation }, { scale: baseScale }]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [object.x, object.y, object.rotation, object.scale, canvasSize.width, canvasSize.height])
 
@@ -200,7 +196,7 @@ export function CanvasObject({ object, canvasSize, interaction, committed }: Can
     case 'zone':
       return (
         <Group transform={transform}>
-          <ZoneShape object={object} canvasSize={canvasSize} interaction={interaction} committed={committed} />
+          <ZoneShape object={object} canvasSize={canvasSize} committed={committed} />
         </Group>
       )
     case 'circle-zone':

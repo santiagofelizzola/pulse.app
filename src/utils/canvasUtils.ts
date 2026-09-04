@@ -13,13 +13,13 @@ import type { Cone, Disc, PlacedObject, PlayerMarker } from '../types'
 export const HIT_RADIUS = 24
 export const TAP_SLOP = 8
 
-// Selection handles (design.md §7: 20px circles, 44px touch target via hit-slop). Shared
-// between the gesture hook (hit-testing, on the UI thread) and SelectionOverlay (rendering,
-// on the JS thread) so the drawn handle position always matches where a touch actually lands.
+// The selection's one remaining handle — rotate (design.md §7: 20px circle, 44px touch target
+// via hit-slop). Shared between the gesture hook (hit-testing, on the UI thread) and
+// SelectionOverlay (rendering, on the JS thread) so the drawn handle position always matches
+// where a touch actually lands. The scale handle, and the SCALE_MIN/SCALE_MAX bounds that
+// clamped it, are gone: a placed object's size is fixed.
 export const ROTATE_HANDLE_GAP = 20
 export const HANDLE_HIT_RADIUS = canvas.toolButton / 2
-export const SCALE_MIN = 0.5
-export const SCALE_MAX = 2.5
 
 // Default cone body color — traffic-cone orange, distinct from the fixed dark base stripe
 // baked into cone.svg. (Other equipment still defaults to colors.canvasInk; the cone is the

@@ -9,17 +9,18 @@ import {
   HANDLE_HIT_RADIUS,
   HIT_RADIUS,
   isPointInObjectHit,
-  MIN_ZONE_SIZE_PX,
   ROTATE_HANDLE_GAP,
   rotatePointAround,
-  SCALE_MAX,
-  SCALE_MIN,
   TAP_SLOP,
 } from '../../../utils/canvasUtils'
 import type { CanvasTool, PlaceableToolType, SelectedItem, ShapeToolType } from '../../../store/canvasStore'
 import type { Arrow, ArrowType, PlacedObject } from '../../../types'
 
-export type InteractionMode = 'idle' | 'move' | 'rotate' | 'scale' | 'resize' | 'drawArrow' | 'placeShape'
+// Rotation is the only transform left on a placed object: scaling and rectangle resizing were
+// removed along with their handles, so an object's size is fixed once it lands on the canvas.
+// The `scale` field on BaseCanvasObject and Zone's width/height are untouched — every saved
+// drill still RENDERS from them, there is simply no longer a gesture that writes them.
+export type InteractionMode = 'idle' | 'move' | 'rotate' | 'drawArrow' | 'placeShape'
 
 export interface InteractionState {
   mode: InteractionMode
@@ -28,9 +29,6 @@ export interface InteractionState {
   dx: number
   dy: number
   rotation: number
-  scale: number
-  resizeWidth: number
-  resizeHeight: number
   drawType: ArrowType | null
   placeShapeType: ShapeToolType | null
   drawStart: { x: number; y: number }
@@ -48,7 +46,7 @@ export interface InteractionState {
   // an arrow drag needs to hold both endpoints steady, not just one.
   startEndX: number
   startEndY: number
-  // Bumped every onBegin. A commit (move/rotate/scale/resize) freezes `interaction` at its
+  // Bumped every onBegin. A commit (move/rotate) freezes `interaction` at its
   // final value instead of resetting to idle in onEnd — the reset waits for the committed
   // objects/arrows props to actually land (see the useEffect below) so the render never has a
   // frame where it falls back to the pre-drag prop position. `seq` lets that effect confirm
@@ -76,9 +74,11 @@ export interface CommittedObject {
   x: number
   y: number
   rotation: number
+  // Still mirrored even though no gesture writes it any more: it is what every already-scaled
+  // object in the library renders from, so dropping it here would flatten them all to 1.
   scale: number
-  // Zone (rectangle) only — the one shape resized in width/height rather than via `scale`.
-  // Left at 0 for every other type, which never reads these.
+  // Zone (rectangle) only — its footprint is stored as width/height rather than as a `scale`
+  // multiplier. Left at 0 for every other type, which never reads these.
   width: number
   height: number
 }
@@ -138,9 +138,6 @@ export const IDLE_STATE: InteractionState = {
   dx: 0,
   dy: 0,
   rotation: 0,
-  scale: 1,
-  resizeWidth: 0,
-  resizeHeight: 0,
   drawType: null,
   placeShapeType: null,
   drawStart: { x: 0, y: 0 },
@@ -171,8 +168,6 @@ interface UseCanvasGesturesArgs {
   onSelect: (id: string | null) => void
   onMoveObject: (id: string, x: number, y: number) => void
   onRotateObject: (id: string, rotation: number) => void
-  onScaleObject: (id: string, scale: number) => void
-  onResizeObject: (id: string, width: number, height: number) => void
   onPlaceShape: (type: ShapeToolType, p1: { x: number; y: number }, p2: { x: number; y: number }) => void
   onDrawArrow: (type: ArrowType, points: { x: number; y: number }[]) => void
   onMoveArrow: (id: string, dx: number, dy: number) => void
@@ -188,8 +183,6 @@ export function useCanvasGestures({
   onSelect,
   onMoveObject,
   onRotateObject,
-  onScaleObject,
-  onResizeObject,
   onPlaceShape,
   onDrawArrow,
   onMoveArrow,
@@ -206,13 +199,7 @@ export function useCanvasGestures({
   // until this flips.
   const dragQualified = useSharedValue(false)
   const targetCenter = useSharedValue({ x: 0, y: 0 })
-  const targetScaleRef = useSharedValue(1)
   const interactionSeq = useSharedValue(0)
-  // Object rotation captured at the start of a 'resize' drag — width/height changes come from
-  // the drag point projected into the object's *local* (unrotated) axes, so the rotation used
-  // for that projection must stay fixed for the gesture's duration, same reasoning as
-  // targetScaleRef for uniform scale.
-  const resizeRotationRef = useSharedValue(0)
   // JS-thread mirror of "is a gesture live right now" — SelectionOverlay hides while true so it
   // never lags the worklet-driven live preview (design.md §10: reposition, don't jump).
   const [isInteracting, setIsInteracting] = useState(false)
@@ -236,14 +223,6 @@ export function useCanvasGestures({
   const commitRotate = (seq: number, id: string, rotation: number) => {
     pendingClearSeq.current = seq
     onRotateObject(id, rotation)
-  }
-  const commitScale = (seq: number, id: string, scale: number) => {
-    pendingClearSeq.current = seq
-    onScaleObject(id, scale)
-  }
-  const commitResize = (seq: number, id: string, width: number, height: number) => {
-    pendingClearSeq.current = seq
-    onResizeObject(id, width, height)
   }
 
   // Mirrors every store change into `committed`, and — when that change is the one a just-ended
@@ -285,46 +264,24 @@ export function useCanvasGestures({
       interactionSeq.value += 1
       const seq = interactionSeq.value
 
-      // Handles on the current selection take priority over anything else. `selected` is only
-      // ever non-null while tool.kind === 'select' (place/draw tools clear it on arming), so
-      // this is a no-op while a placement/draw tool is active.
+      // The rotate handle on the current selection takes priority over anything else. `selected`
+      // is only ever non-null while tool.kind === 'select' (place/draw tools clear it on arming),
+      // so this is a no-op while a placement/draw tool is active.
+      //
+      // Rotation is the only handle left: the scale handle (and the rectangle-resize branch it
+      // forked into) was removed, so a placed object's size is fixed. `object.scale` is still
+      // read here because an already-scaled object's handle has to sit on its ACTUAL footprint.
       if (selected && selected.kind === 'object') {
         const object = selected.object
         const cx = object.x * canvasSize.width
         const cy = object.y * canvasSize.height
         const footprint = getObjectFootprint(object, canvasSize)
-        const halfW = (footprint.width * object.scale) / 2
         const halfH = (footprint.height * object.scale) / 2
 
         const rotateHandle = rotatePointAround({ x: 0, y: -halfH - ROTATE_HANDLE_GAP }, object.rotation, cx, cy)
         if (Math.hypot(event.x - rotateHandle.x, event.y - rotateHandle.y) <= HANDLE_HIT_RADIUS) {
           targetCenter.value = { x: cx, y: cy }
           interaction.value = { ...IDLE_STATE, seq, mode: 'rotate', targetId: object.id, targetKind: 'object', rotation: object.rotation }
-          runOnJS(beginInteracting)()
-          return
-        }
-
-        const scaleHandle = rotatePointAround({ x: halfW, y: halfH }, object.rotation, cx, cy)
-        if (Math.hypot(event.x - scaleHandle.x, event.y - scaleHandle.y) <= HANDLE_HIT_RADIUS) {
-          targetCenter.value = { x: cx, y: cy }
-          if (object.type === 'zone') {
-            // Rectangles resize width/height independently rather than through the shared
-            // uniform `scale` multiplier every other object uses (see canvasStore's
-            // resizeObject and CanvasObject.tsx's zone rendering).
-            resizeRotationRef.value = object.rotation
-            interaction.value = {
-              ...IDLE_STATE,
-              seq,
-              mode: 'resize',
-              targetId: object.id,
-              targetKind: 'object',
-              resizeWidth: footprint.width * object.scale,
-              resizeHeight: footprint.height * object.scale,
-            }
-          } else {
-            targetScaleRef.value = Math.hypot(footprint.width / 2, footprint.height / 2)
-            interaction.value = { ...IDLE_STATE, seq, mode: 'scale', targetId: object.id, targetKind: 'object', scale: object.scale }
-          }
           runOnJS(beginInteracting)()
           return
         }
@@ -458,26 +415,6 @@ export function useCanvasGestures({
       } else if (current.mode === 'rotate') {
         const angle = Math.atan2(event.y - targetCenter.value.y, event.x - targetCenter.value.x)
         interaction.value = { ...current, rotation: angle + Math.PI / 2 }
-      } else if (current.mode === 'scale') {
-        const distance = Math.hypot(event.x - targetCenter.value.x, event.y - targetCenter.value.y)
-        const raw = distance / targetScaleRef.value
-        interaction.value = { ...current, scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)) }
-      } else if (current.mode === 'resize') {
-        // Project the drag point into the object's local (unrotated) axes — inverse of
-        // rotatePointAround — so a rotated rectangle's width/height still track the finger
-        // along its own edges rather than the screen's.
-        const rotation = resizeRotationRef.value
-        const cos = Math.cos(rotation)
-        const sin = Math.sin(rotation)
-        const dx = event.x - targetCenter.value.x
-        const dy = event.y - targetCenter.value.y
-        const localX = dx * cos + dy * sin
-        const localY = -dx * sin + dy * cos
-        interaction.value = {
-          ...current,
-          resizeWidth: Math.max(MIN_ZONE_SIZE_PX, Math.abs(localX) * 2),
-          resizeHeight: Math.max(MIN_ZONE_SIZE_PX, Math.abs(localY) * 2),
-        }
       } else if (current.mode === 'drawArrow' || current.mode === 'placeShape') {
         interaction.value = { ...current, drawCurrent: { x: event.x, y: event.y } }
       }
@@ -505,7 +442,7 @@ export function useCanvasGestures({
     .onEnd((event) => {
       const current = interaction.value
       const travel = Math.hypot(event.translationX, event.translationY)
-      // Set true for move/rotate/scale/resize commits — those leave `interaction` frozen at its
+      // Set true for move/rotate commits — those leave `interaction` frozen at its
       // final value instead of resetting here, so the render keeps showing the live (correct)
       // position until the committed objects/arrows props land and the effect above clears it.
       // Without this, resetting synchronously here makes the transform fall back to the
@@ -535,14 +472,6 @@ export function useCanvasGestures({
       } else if (current.mode === 'rotate' && current.targetId && travel >= TAP_SLOP) {
         runOnJS(commitRotate)(current.seq, current.targetId, current.rotation)
         deferClear = true
-      } else if (current.mode === 'scale' && current.targetId && travel >= TAP_SLOP) {
-        runOnJS(commitScale)(current.seq, current.targetId, current.scale)
-        deferClear = true
-      } else if (current.mode === 'resize' && current.targetId && travel >= TAP_SLOP) {
-        if (canvasSize.width > 0 && canvasSize.height > 0) {
-          runOnJS(commitResize)(current.seq, current.targetId, current.resizeWidth / canvasSize.width, current.resizeHeight / canvasSize.height)
-          deferClear = true
-        }
       } else if (current.mode === 'drawArrow' && current.drawType) {
         if (travel >= MIN_ARROW_LENGTH && canvasSize.width > 0 && canvasSize.height > 0) {
           const start = { x: current.drawStart.x / canvasSize.width, y: current.drawStart.y / canvasSize.height }

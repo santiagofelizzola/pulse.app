@@ -105,8 +105,6 @@ interface CanvasStoreState {
   ) => void
   moveObject: (id: string, x: number, y: number) => void
   rotateObject: (id: string, rotation: number) => void
-  scaleObject: (id: string, scale: number) => void
-  resizeObject: (id: string, width: number, height: number) => void
   setObjectColor: (id: string, color: string) => void
 
   addArrow: (type: ArrowType, points: { x: number; y: number }[]) => void
@@ -225,21 +223,10 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       commit({ objects: get().objects.map((object) => (object.id === id ? { ...object, rotation } : object)) })
     },
 
-    scaleObject: (id, scale) => {
-      commit({ objects: get().objects.map((object) => (object.id === id ? { ...object, scale } : object)) })
-    },
-
-    // Independent width/height resize — only meaningful for 'zone' (rectangle), which is the
-    // one shape type resized by dragging its two dimensions directly rather than via the
-    // shared uniform `scale` multiplier every other object uses. See useCanvasGestures.ts's
-    // 'resize' interaction mode.
-    resizeObject: (id, width, height) => {
-      commit({
-        objects: get().objects.map((object) =>
-          object.id === id && object.type === 'zone' ? { ...object, width, height } : object
-        ),
-      })
-    },
+    // There is deliberately no scaleObject/resizeObject: the scale and resize handles were
+    // removed, so an object's size is fixed once placed. `scale` on BaseCanvasObject and Zone's
+    // width/height stay in the MODEL — every already-saved drill renders from them and the
+    // placement drag still sets a zone's — there is simply no mutator that changes them.
 
     // Bails before commit() on both no-op cases — a non-colorable (or missing) target, and a target
     // that already carries this exact color. Every commit pushes a history entry, and the color

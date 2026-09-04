@@ -43,8 +43,6 @@ export function useCanvasState() {
   const placeShapeFromPoints = useCanvasStore((state) => state.placeShapeFromPoints)
   const moveObject = useCanvasStore((state) => state.moveObject)
   const rotateObject = useCanvasStore((state) => state.rotateObject)
-  const scaleObject = useCanvasStore((state) => state.scaleObject)
-  const resizeObject = useCanvasStore((state) => state.resizeObject)
   const setObjectColor = useCanvasStore((state) => state.setObjectColor)
   const addArrow = useCanvasStore((state) => state.addArrow)
   const moveArrow = useCanvasStore((state) => state.moveArrow)
@@ -112,8 +110,6 @@ export function useCanvasState() {
     placeShape,
     moveObject,
     rotateObject,
-    scaleObject,
-    resizeObject,
     setObjectColor,
     drawArrow,
     moveArrow,

@@ -41,10 +41,9 @@ export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, on
 
   let box: ScreenBox
   let rotation = 0
-  let showHandles = false
+  let showHandle = false
   let handleCx = 0
   let handleCy = 0
-  let handleHalfW = 0
   let handleHalfH = 0
 
   if (selected.kind === 'object') {
@@ -52,23 +51,27 @@ export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, on
     const cx = object.x * canvasSize.width
     const cy = object.y * canvasSize.height
     const footprint = getObjectFootprint(object, canvasSize)
+    // `object.scale` still multiplies the footprint: no gesture writes it any more, but an
+    // object saved while scaling existed keeps its stored value and the outline has to hug the
+    // size it actually renders at.
     const width = footprint.width * object.scale
     const height = footprint.height * object.scale
     box = rotatedBoundingBox(cx, cy, width, height, object.rotation)
     rotation = object.rotation
-    showHandles = true
+    showHandle = true
     handleCx = cx
     handleCy = cy
-    handleHalfW = width / 2
     handleHalfH = height / 2
   } else {
     box = getArrowScreenBounds(selected.arrow.points, canvasSize)
   }
 
-  const rotateHandle = showHandles
+  // Rotate is the only handle. The scale handle that used to sit on the bottom-right corner —
+  // and the width/height resize it triggered on a rectangle — are gone: an object's size is
+  // fixed once placed.
+  const rotateHandle = showHandle
     ? rotatePointAround({ x: 0, y: -handleHalfH - ROTATE_HANDLE_GAP }, rotation, handleCx, handleCy)
     : null
-  const scaleHandle = showHandles ? rotatePointAround({ x: handleHalfW, y: handleHalfH }, rotation, handleCx, handleCy) : null
 
   const boxCenterX = (box.left + box.right) / 2
   const flips = box.top < canvasSize.height * canvas.selectionTopFlipThreshold
@@ -99,7 +102,6 @@ export function SelectionOverlay({ selected, canvasSize, hidden, onDuplicate, on
       ) : null}
 
       {rotateHandle ? <Handle x={rotateHandle.x} y={rotateHandle.y} /> : null}
-      {scaleHandle ? <Handle x={scaleHandle.x} y={scaleHandle.y} /> : null}
 
       <ToolbarAnimatedContainer left={toolbarLeft} top={toolbarY}>
         {/* box-none: only the Pressable buttons below should catch touches — without this, the
