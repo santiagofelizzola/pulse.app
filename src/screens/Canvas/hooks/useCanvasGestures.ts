@@ -194,12 +194,19 @@ export function useCanvasGestures({
   const committed = useSharedValue<CommittedSnapshot>(EMPTY_SNAPSHOT)
   const startObjectPoint = useSharedValue({ x: 0, y: 0 })
   // Raw touch-down point (screen px, same frame as onBegin's event.x/y), captured every
-  // onBegin regardless of what gets hit. onTouchesUp uses it to measure tap-vs-drag travel
-  // independent of the Pan recognizer's own activation state — see onTouchesUp below for why.
+  // onBegin regardless of what gets hit. Every distance in this gesture is measured from it —
+  // it is the one origin the Pan recognizer never rebases. See onUpdate for why that matters.
   const touchDownPoint = useSharedValue({ x: 0, y: 0 })
-  // Latches true once a gesture's travel has cleared TAP_SLOP, i.e. once it has stopped being a
-  // possible tap and become a real drag. Reset every onBegin. See onUpdate, which paints nothing
-  // until this flips.
+  // THE tap-vs-drag verdict for the whole gesture. Latches true the moment travel from
+  // touch-down first clears TAP_SLOP, never unlatches, and is reset only in onBegin.
+  //
+  // Read by all three of onUpdate (paint), onTouchesUp (select) and onEnd (commit), because the
+  // question has to be answered ONCE. It used to be latched here for painting and then asked
+  // again from the final position by the other two, which disagreed whenever a drag went out and
+  // came back: measured on device, a finger that travelled 24.5pt out and returned to 5.0pt of
+  // touch-down painted the object all the way out (drag), then onTouchesUp re-read the endpoint
+  // as a tap, reset to idle and selected — and the object snapped home. A gesture that ever
+  // became a drag stays a drag, and commits wherever the finger actually left it.
   const dragQualified = useSharedValue(false)
   const targetCenter = useSharedValue({ x: 0, y: 0 })
   const interactionSeq = useSharedValue(0)
@@ -501,9 +508,12 @@ export function useCanvasGestures({
       // fire for a clean tap (same root cause as the tap-to-place fix in onBegin's 'place'
       // branch: onEnd can't be trusted for a near-instantaneous, low-travel touch). onTouchesUp
       // is the raw touch-lift event and fires regardless of recognizer activation, so tap
-      // selection is decided here instead of onEnd. Gated the same way onEnd gates its drag
-      // commits (TAP_SLOP) so a real drag — which reliably does activate and reaches onEnd —
-      // is left untouched and still never selects.
+      // selection is decided here instead of onEnd.
+      //
+      // `dragQualified` is checked FIRST, and the distance test only settles a gesture that never
+      // qualified. Without that, an out-and-back drag — out past the slop, then home again before
+      // lifting — reads as a tap here, gets reset to idle, and snaps the object back from wherever
+      // it was painted. See dragQualified's own note above.
       const current = interaction.value
       // DIAG — recorded for every touch lift, including the ones that return early below, so a
       // gesture that reached neither the select branch nor a commit is still visible in the log.
@@ -513,7 +523,7 @@ export function useCanvasGestures({
       if (!touch) return
       const travel = Math.hypot(touch.x - touchDownPoint.value.x, touch.y - touchDownPoint.value.y)
       dbgTouchesUpRaw.value = travel // DIAG
-      if (travel < TAP_SLOP) {
+      if (!dragQualified.value && travel < TAP_SLOP) {
         dbgTouchesUpSelected.value = true // DIAG
         interaction.value = IDLE_STATE
         runOnJS(onSelect)(current.targetId)
@@ -522,11 +532,15 @@ export function useCanvasGestures({
     })
     .onEnd((event) => {
       const current = interaction.value
-      // Same origin as onUpdate's gate and onTouchesUp's — see the long note in onUpdate. Every
-      // commit below is gated on this, and the move commits are computed FROM it, so the position
-      // that lands in the store is the position the finger actually finished at.
+      // Same origin as onUpdate's gate and onTouchesUp's — see the long note in onUpdate. The
+      // move and arrow commits are computed FROM this, so the position that lands in the store is
+      // the position the finger actually finished at.
       const rawDx = event.x - touchDownPoint.value.x
       const rawDy = event.y - touchDownPoint.value.y
+      // Only the draw/place branches gate on this distance now; move and rotate defer to
+      // `dragQualified`. MIN_ARROW_LENGTH asks a different question from TAP_SLOP — not "was this
+      // a drag or a tap" but "is this arrow long enough to be worth creating" — so it stays a
+      // measurement of the finished gesture rather than a latch.
       const travel = Math.hypot(rawDx, rawDy)
       // DIAG — endRaw is now what gates and commits the drag; endTrans is the rebased translation
       // that USED to, kept alongside it purely so the shortfall between them stays visible. Before
@@ -543,12 +557,13 @@ export function useCanvasGestures({
       // position that this whole seq/effect mechanism exists to avoid.
       let deferClear = false
 
-      // A near-zero-travel "move" is really just the selection tap already handled by
-      // onTouchesUp above (which will have reset `interaction` to idle by the time we get here)
-      // — this branch only ever runs for a real drag. Gated on the same TAP_SLOP, now measured on
-      // the same quantity from the same origin, so the two partition the whole range cleanly:
-      // under 8pt of real travel selects, 8pt and over moves, and nothing falls between them.
-      if (current.mode === 'move' && current.targetId && travel >= TAP_SLOP) {
+      // Commits on `dragQualified`, the verdict onUpdate latched and onTouchesUp deferred to —
+      // not on a fresh distance test. A tap was already handled above (and will have reset
+      // `interaction` to idle by the time we get here), so this branch only ever runs for a real
+      // drag, and it runs for EVERY real drag: one that wandered back inside the slop before
+      // lifting still commits, at whatever point the finger actually left it. The two callbacks
+      // therefore partition the whole range with nothing between them and no way to disagree.
+      if (current.mode === 'move' && current.targetId && dragQualified.value) {
         dbgEndBranch.value = 'commitMove' // DIAG
         if (current.targetKind === 'object' && canvasSize.width > 0 && canvasSize.height > 0) {
           const finalX = (startObjectPoint.value.x + rawDx) / canvasSize.width
@@ -559,7 +574,9 @@ export function useCanvasGestures({
           runOnJS(commitMoveArrow)(current.seq, current.targetId, rawDx / canvasSize.width, rawDy / canvasSize.height)
           deferClear = true
         }
-      } else if (current.mode === 'rotate' && current.targetId && travel >= TAP_SLOP) {
+      } else if (current.mode === 'rotate' && current.targetId && dragQualified.value) {
+        // Same verdict as the move commit above — a rotation that swings out and back still
+        // committed a rotation, and the handle's final angle is the one the coach chose.
         dbgEndBranch.value = 'commitRotate' // DIAG
         runOnJS(commitRotate)(current.seq, current.targetId, current.rotation)
         deferClear = true
@@ -596,9 +613,12 @@ export function useCanvasGestures({
       //   endRaw              what the finger actually travelled, and what the object now moves
       //   endTrans            the old rebased number, kept only so the gap stays visible.
       //                       endRaw - endTrans should still be roughly `rebase`.
-      //   painted=true        expected on EVERY gesture whose endRaw >= 8
-      //   branch=commitMove   expected on every one of those too — no more dead band
-      //   sel=true            expected only when upRaw < 8, i.e. a real tap
+      //   painted=true        expected on every gesture whose endRaw >= 8, and on any that
+      //                       reached 8 at some point (peakRaw >= 8) even if it came back
+      //   branch=commitMove   expected on EVERY painted=true line now, whatever endRaw ended at
+      //   sel=true            expected only on painted=false lines — a gesture that never
+      //                       qualified. painted=true with sel=true is the out-and-back snap-back
+      //                       and should no longer occur at all.
       //   ok=false            normal for a stationary tap (the pan never activates, onEnd never
       //                       fires); on a moving gesture it would mean a cancellation
       //   begins > 1          two onBegins inside one physical touch — none seen so far
