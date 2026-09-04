@@ -150,7 +150,10 @@ export const IDLE_STATE: InteractionState = {
 }
 
 // Below this drag distance, a draw-tool or shape-placement gesture is treated as an accidental
-// tap rather than a real arrow/shape.
+// tap rather than a real arrow/shape. Measured, like TAP_SLOP, on raw travel from the touch-down
+// point — these two branches always built their geometry from the raw `event.x/y` while gating on
+// the rebased translation, so a slow arrow could be drawn and then discarded for being "too
+// short" when it wasn't. Same origin now for the gate and the geometry.
 const MIN_ARROW_LENGTH = 12
 
 interface CanvasSize {
@@ -208,18 +211,23 @@ export function useCanvasGestures({
   const endInteracting = () => setIsInteracting(false)
 
   // ---------------------------------------------------------------------------------------
-  // TEMPORARY — drag diagnostics. Delete this block (and its five call sites, each marked
-  // `// DIAG`) once the short-drag snap-back is diagnosed. It writes nothing and changes no
+  // TEMPORARY — drag diagnostics, kept for ONE round to confirm the fix on device. Delete this
+  // block and its `// DIAG`-marked call sites afterwards. It writes nothing and changes no
   // behaviour; it only records what each gesture measured, and prints one line per gesture.
   //
-  // What it is for: the gesture's three distance gates do not share an origin. onUpdate and
-  // onEnd both measure `event.translationX/Y`, which RNGH rebases to zero the moment the
-  // recognizer activates — iOS sets `minDistSq = 0` from `.minDistance(0)`, which makes
+  // It was added to answer: why does a short drag move an object and then leave it where it
+  // started? The reading said the three distance gates did not share an origin. onUpdate and
+  // onEnd measured `event.translationX/Y`, which RNGH rebases to zero the moment the recognizer
+  // activates — iOS sets `minDistSq = 0` from `.minDistance(0)`, which makes
   // `_hasCustomActivationCriteria` true, so the first touchesMoved fires
   // `setTranslation:CGPointZero` (RNPanHandler.m); Android's `activate()` calls
   // `resetProgress()`, i.e. `startX = lastX` (PanGestureHandler.kt). onTouchesUp instead
-  // measures from `touchDownPoint`, which is never rebased. `beginToFirstUpdate` below is
-  // exactly that rebase, and `peakTranslation` vs `peakRaw` is how far the two origins drift.
+  // measured from `touchDownPoint`, which is never rebased.
+  //
+  // Measured: the discarded offset ran 1.7-29.1pt (median 10.6) on device, so objects committed
+  // 46-73% of the finger's travel and anything under `8 + offset` of travel did nothing at all.
+  // onUpdate and onEnd now measure from `touchDownPoint` too; these counters stay one more round
+  // so `rebase` can be seen still happening while no longer reaching anything.
   // ---------------------------------------------------------------------------------------
   const dbgBeginCount = useSharedValue(0)
   const dbgMode = useSharedValue('')
@@ -446,28 +454,40 @@ export function useCanvasGestures({
         if (raw > dbgPeakRaw.value) dbgPeakRaw.value = raw
       }
 
-      // Nothing moves until the gesture clears TAP_SLOP — the same threshold, measured on the
-      // same quantity (translation, which is what onEnd gates its commits on), so the live
-      // preview and the commit can never disagree about whether this was a tap or a drag.
-      // Without this, a sub-slop drag painted live from the first pixel and was then resolved as
-      // a tap by onTouchesUp, which resets to idle: the object followed the finger and snapped
-      // straight back to where it started.
+      // The drag delta is measured from `touchDownPoint`, NOT from event.translationX/Y.
       //
-      // Deliberately NOT .minDistance(TAP_SLOP) on the Pan: RNGH rebases translation to zero at
-      // activation (iOS RNPanHandler's setTranslation:0, Android PanGestureHandler.activate ->
-      // resetProgress), so an activation distance would leave onEnd measuring travel from the
-      // activation point rather than touch-down — opening a wider band where a drag neither
-      // commits nor selects. Latched rather than re-tested per frame so a drag that wanders back
-      // inside the slop keeps tracking the finger instead of freezing.
+      // This is the whole fix for the short-drag snap-back, and it is not a micro-optimisation:
+      // RNGH zeroes translation the instant the recognizer activates — iOS takes `.minDistance(0)`
+      // as `minDistSq = 0`, which makes `_hasCustomActivationCriteria` true, so the FIRST
+      // touchesMoved fires `setTranslation:CGPointZero` (RNPanHandler.m); Android's `activate()`
+      // calls `resetProgress()`, i.e. `startX = lastX` (PanGestureHandler.kt). Whatever the finger
+      // covered in that first sample is discarded and never comes back, so `translation` is short
+      // by a fixed offset for the REST of the gesture.
+      //
+      // Measured on device: that offset ran 1.7-29.1pt, median 10.6. Since it is constant per
+      // gesture, a 480pt drag lost 3% (invisible) while a 29pt drag lost half — the object
+      // committed 46-73% of the distance the finger actually travelled, and anything under
+      // `8 + offset` of real travel cleared neither this gate nor onEnd's, so it painted nothing,
+      // selected nothing and committed nothing. That is the snap-back.
+      //
+      // `touchDownPoint` is captured in onBegin and is never rebased, so it is the one origin all
+      // three gates can agree on — onTouchesUp already measured tap-vs-drag against it. One
+      // quantity, one origin, one threshold: no dead band between "tap" and "drag", and the object
+      // tracks the finger exactly.
+      const rawDx = event.x - touchDownPoint.value.x
+      const rawDy = event.y - touchDownPoint.value.y
+
+      // Latched rather than re-tested per frame so a drag that wanders back inside the slop keeps
+      // tracking the finger instead of freezing.
       if (!dragQualified.value) {
-        if (Math.hypot(event.translationX, event.translationY) < TAP_SLOP) return
+        if (Math.hypot(rawDx, rawDy) < TAP_SLOP) return
         dragQualified.value = true
         dbgQualified.value = true // DIAG — true means the object actually painted under the finger
       }
 
       const current = interaction.value
       if (current.mode === 'move') {
-        interaction.value = { ...current, dx: event.translationX, dy: event.translationY }
+        interaction.value = { ...current, dx: rawDx, dy: rawDy }
       } else if (current.mode === 'rotate') {
         const angle = Math.atan2(event.y - targetCenter.value.y, event.x - targetCenter.value.x)
         interaction.value = { ...current, rotation: angle + Math.PI / 2 }
@@ -502,13 +522,19 @@ export function useCanvasGestures({
     })
     .onEnd((event) => {
       const current = interaction.value
-      const travel = Math.hypot(event.translationX, event.translationY)
-      // DIAG — the pair that matters: `travel` (rebased) is what every commit below is gated on,
-      // while endRaw is the same lift measured from touch-down. A gesture with endRaw >= TAP_SLOP
-      // but travel < TAP_SLOP is one that neither selected (onTouchesUp saw it as a drag) nor
-      // committed (here it reads as a tap) — the dead band.
-      dbgEndTranslation.value = travel
-      dbgEndRaw.value = Math.hypot(event.x - touchDownPoint.value.x, event.y - touchDownPoint.value.y)
+      // Same origin as onUpdate's gate and onTouchesUp's — see the long note in onUpdate. Every
+      // commit below is gated on this, and the move commits are computed FROM it, so the position
+      // that lands in the store is the position the finger actually finished at.
+      const rawDx = event.x - touchDownPoint.value.x
+      const rawDy = event.y - touchDownPoint.value.y
+      const travel = Math.hypot(rawDx, rawDy)
+      // DIAG — endRaw is now what gates and commits the drag; endTrans is the rebased translation
+      // that USED to, kept alongside it purely so the shortfall between them stays visible. Before
+      // the fix these two diverged by the whole rebase (endRaw 39.7 committing only 18.8); after
+      // it, the object should land on endRaw and the shortfall should read as whatever endTrans
+      // still lags by — a number that no longer reaches the store.
+      dbgEndTranslation.value = Math.hypot(event.translationX, event.translationY)
+      dbgEndRaw.value = travel
       // Set true for move/rotate commits — those leave `interaction` frozen at its
       // final value instead of resetting here, so the render keeps showing the live (correct)
       // position until the committed objects/arrows props land and the effect above clears it.
@@ -519,22 +545,18 @@ export function useCanvasGestures({
 
       // A near-zero-travel "move" is really just the selection tap already handled by
       // onTouchesUp above (which will have reset `interaction` to idle by the time we get here)
-      // — this branch only ever runs for a real drag, gated the same way (TAP_SLOP) so it never
-      // double-fires against onTouchesUp's tap case.
+      // — this branch only ever runs for a real drag. Gated on the same TAP_SLOP, now measured on
+      // the same quantity from the same origin, so the two partition the whole range cleanly:
+      // under 8pt of real travel selects, 8pt and over moves, and nothing falls between them.
       if (current.mode === 'move' && current.targetId && travel >= TAP_SLOP) {
         dbgEndBranch.value = 'commitMove' // DIAG
         if (current.targetKind === 'object' && canvasSize.width > 0 && canvasSize.height > 0) {
-          const finalX = (startObjectPoint.value.x + event.translationX) / canvasSize.width
-          const finalY = (startObjectPoint.value.y + event.translationY) / canvasSize.height
+          const finalX = (startObjectPoint.value.x + rawDx) / canvasSize.width
+          const finalY = (startObjectPoint.value.y + rawDy) / canvasSize.height
           runOnJS(commitMove)(current.seq, current.targetId, Math.min(1, Math.max(0, finalX)), Math.min(1, Math.max(0, finalY)))
           deferClear = true
         } else if (current.targetKind === 'arrow' && canvasSize.width > 0 && canvasSize.height > 0) {
-          runOnJS(commitMoveArrow)(
-            current.seq,
-            current.targetId,
-            event.translationX / canvasSize.width,
-            event.translationY / canvasSize.height
-          )
+          runOnJS(commitMoveArrow)(current.seq, current.targetId, rawDx / canvasSize.width, rawDy / canvasSize.height)
           deferClear = true
         }
       } else if (current.mode === 'rotate' && current.targetId && travel >= TAP_SLOP) {
@@ -568,13 +590,18 @@ export function useCanvasGestures({
       // DIAG — one line per gesture, printed here because onFinalize is the only callback that
       // fires for every outcome (committed, cancelled, or never activated at all).
       //
-      // Reading it:
-      //   begins > 1          two onBegins inside one physical touch
-      //   rebase              raw travel already spent when translation restarted at zero
-      //   painted=false       the object never moved under the finger
-      //   endRaw >= 8 and endTrans < 8 with branch=none and sel=false   the dead band
-      //   painted=true with sel=true                                    tracked, then reverted
-      //   ok=false            the gesture was cancelled rather than ended
+      // Reading it, now that the drag measures from touch-down:
+      //   rebase              still reported, and still 1-30pt — RNGH keeps discarding it. It no
+      //                       longer reaches anything: nothing gates or commits on translation.
+      //   endRaw              what the finger actually travelled, and what the object now moves
+      //   endTrans            the old rebased number, kept only so the gap stays visible.
+      //                       endRaw - endTrans should still be roughly `rebase`.
+      //   painted=true        expected on EVERY gesture whose endRaw >= 8
+      //   branch=commitMove   expected on every one of those too — no more dead band
+      //   sel=true            expected only when upRaw < 8, i.e. a real tap
+      //   ok=false            normal for a stationary tap (the pan never activates, onEnd never
+      //                       fires); on a moving gesture it would mean a cancellation
+      //   begins > 1          two onBegins inside one physical touch — none seen so far
       runOnJS(logGesture)(
         `[drag] begins=${dbgBeginCount.value} mode=${dbgMode.value}` +
           ` rebase=${dbgFirstUpdateTranslation.value.toFixed(1)}` +
