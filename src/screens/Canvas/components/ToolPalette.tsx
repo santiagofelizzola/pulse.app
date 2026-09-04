@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import Animated from 'react-native-reanimated'
-import { Check, Circle as CircleIcon, Palette, Square, UserRound } from 'lucide-react-native'
+import { Check, Palette, Square, UserRound } from 'lucide-react-native'
 import { Path as SvgPath, Svg, SvgXml } from 'react-native-svg'
 
 import { usePressAnimation } from '../../../components/ui/usePressAnimation'
@@ -31,11 +31,6 @@ const PLAYER_PRESETS: Array<{ tool: PlaceableToolType; label: string }> = [
 const BALL_OPTIONS: Array<{ tool: PlaceableToolType; assetKey: EquipmentAssetKey; label: string; accessibilityLabel: string }> = [
   { tool: 'ball-bw', assetKey: 'ball-bw', label: 'BW', accessibilityLabel: 'Ball (black & white)' },
   { tool: 'ball-color', assetKey: 'ball-color', label: 'Color', accessibilityLabel: 'Ball (color)' },
-]
-
-const ZONE_OPTIONS: Array<{ tool: PlaceableToolType; label: string }> = [
-  { tool: 'shape-rect', label: 'Square' },
-  { tool: 'shape-circle', label: 'Circle' },
 ]
 
 const ARROW_TOOLS: Array<{ type: ArrowType; label: string }> = [
@@ -88,15 +83,6 @@ function ConeToolIcon() {
   const xml = useEquipmentSvgText('cone')
   if (!xml) return <View style={{ width: ICON_SIZE, height: ICON_SIZE }} />
   return <SvgXml xml={xml} width={ICON_SIZE} height={ICON_SIZE} color={CONE_DEFAULT_COLOR} />
-}
-
-function ZoneToolIcon({ tool, selected }: { tool: PlaceableToolType; selected: boolean }) {
-  const color = selected ? colors.primary : colors.textPrimary
-  return tool === 'shape-circle' ? (
-    <CircleIcon size={ICON_SIZE} color={color} strokeWidth={1.75} />
-  ) : (
-    <Square size={ICON_SIZE} color={color} strokeWidth={1.75} />
-  )
 }
 
 // No stock icon set covers "squiggly dribble line" vs. "double solid shot line", so each arrow
@@ -156,13 +142,14 @@ function getArmedColor(activeTool: CanvasTool): string | null {
 
 // A top-level palette entry: 44px icon button with a caption label underneath (icon-over-label,
 // design.md §6's Tab Bar item layout), optionally with a popover of nested options anchored
-// above it (Player/Ball/Zone) — same floating-popover treatment for all three, not just Player.
+// above it (Player/Ball/Color) — same floating-popover treatment for all three, not just Player.
 //
 // The popover is wider than its own 44px button, so it can't be centered on the button without
-// risking an overflow off whichever screen edge the button sits closer to (Player and Zone are
-// the leftmost item in their row, Ball the rightmost). `flyoutAlign` anchors the popover's own
-// left or right edge to the button's matching edge instead, so it always grows *inward* toward
-// the middle of the tray rather than centering and potentially spilling off-screen.
+// risking an overflow off whichever screen edge the button sits closer to (Player is the
+// leftmost item in its row, Ball and Color the rightmost in theirs). `flyoutAlign` anchors the
+// popover's own left or right edge to the button's matching edge instead, so it always grows
+// *inward* toward the middle of the tray rather than centering and potentially spilling
+// off-screen.
 function ToolSlot({
   label,
   accessibilityLabel,
@@ -256,14 +243,14 @@ function SwatchButton({ color, isArmed, onPress }: { color: string; isArmed: boo
   )
 }
 
-type FlyoutKey = 'player' | 'ball' | 'zone' | 'color' | null
+type FlyoutKey = 'player' | 'ball' | 'color' | null
 
 export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
   const [openFlyout, setOpenFlyout] = useState<FlyoutKey>(null)
 
   const isPlayerActive = PLAYER_PRESETS.some((preset) => isPlaceToolActive(activeTool, preset.tool))
   const isBallActive = BALL_OPTIONS.some((option) => isPlaceToolActive(activeTool, option.tool))
-  const isZoneActive = ZONE_OPTIONS.some((option) => isPlaceToolActive(activeTool, option.tool))
+  const isZoneActive = isPlaceToolActive(activeTool, 'shape-rect')
   const armedColor = getArmedColor(activeTool)
 
   const toggleFlyout = (key: Exclude<FlyoutKey, null>) => setOpenFlyout((open) => (open === key ? null : key))
@@ -350,27 +337,15 @@ export function ToolPalette({ activeTool, onSelectTool }: ToolPaletteProps) {
       </View>
 
       <View style={styles.row}>
+        {/* Places directly, with no flyout: the circle zone left the palette, and a popover
+            offering one option is a tap the coach shouldn't have to make. CircleZone itself is
+            untouched — the type, its interface and CanvasObject's renderer all stay, so a saved
+            drill containing one still renders and still selects. */}
         <ToolSlot
           label="Zone"
           selected={isZoneActive}
-          onPress={() => toggleFlyout('zone')}
+          onPress={() => selectAndClose({ kind: 'place', type: 'shape-rect' })}
           icon={<Square size={ICON_SIZE} color={isZoneActive ? colors.primary : colors.textPrimary} strokeWidth={1.75} />}
-          flyout={
-            openFlyout === 'zone' ? (
-              <View style={styles.flyoutRow}>
-                {ZONE_OPTIONS.map((option) => (
-                  <FlyoutButton
-                    key={option.tool}
-                    accessibilityLabel={option.label}
-                    onPress={() => selectAndClose({ kind: 'place', type: option.tool })}
-                  >
-                    <ZoneToolIcon tool={option.tool} selected={isPlaceToolActive(activeTool, option.tool)} />
-                    <Text style={styles.flyoutLabel}>{option.label}</Text>
-                  </FlyoutButton>
-                ))}
-              </View>
-            ) : null
-          }
         />
 
         {ARROW_TOOLS.map(({ type, label }) => {

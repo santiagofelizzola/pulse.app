@@ -336,8 +336,8 @@ export default function CanvasScreen() {
                   skiaOverlay={
                     <>
                       {tool.kind === 'draw' ? <ArrowDrawPreview type={tool.type} interaction={interaction} /> : null}
-                      {tool.kind === 'place' && (tool.type === 'shape-rect' || tool.type === 'shape-circle') ? (
-                        <ShapePlacePreview type={tool.type} interaction={interaction} />
+                      {tool.kind === 'place' && tool.type === 'shape-rect' ? (
+                        <ShapePlacePreview interaction={interaction} />
                       ) : null}
                     </>
                   }

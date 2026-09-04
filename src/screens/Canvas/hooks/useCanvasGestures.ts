@@ -363,10 +363,10 @@ export function useCanvasGestures({
           drawCurrent: { x: event.x, y: event.y },
         }
         runOnJS(beginInteracting)()
-      } else if (tool.kind === 'place' && (tool.type === 'shape-rect' || tool.type === 'shape-circle')) {
-        // Rectangle/circle placement is a click-drag-release gesture, like drawing an arrow —
+      } else if (tool.kind === 'place' && tool.type === 'shape-rect') {
+        // Rectangle placement is a click-drag-release gesture, like drawing an arrow —
         // touch-down arms the live preview at a zero-size start, onUpdate grows it live, onEnd
-        // commits using the two endpoints. See ShapePlacePreview for the live-preview render.
+        // commits using the two corners. See ShapePlacePreview for the live-preview render.
         interaction.value = {
           ...IDLE_STATE,
           mode: 'placeShape',

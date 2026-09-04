@@ -6,6 +6,8 @@ import type { Arrow, ArrowType, CanvasBackground, PlacedObject } from '../types'
 
 // Pole/Ladder/Flag/Disc are intentionally absent — dropped from the palette for a tighter
 // tool set (see types/canvas.ts); their PlacedObject types remain for a possible future re-add.
+// 'shape-circle' left the same way: the CircleZone type, its interface and its renderer are all
+// kept so saved drills containing one still render, only the placement affordance is gone.
 export type PlaceableToolType =
   | 'player-blank'
   | 'player-gk'
@@ -16,7 +18,6 @@ export type PlaceableToolType =
   | 'ball-bw'
   | 'ball-color'
   | 'shape-rect'
-  | 'shape-circle'
 
 // 'color' is a MODE, not a per-object edit: armed from the tool palette with a chosen color, it
 // stays armed and repaints every colorable object the coach taps (see CanvasScreen's tap router).
@@ -34,10 +35,11 @@ interface CanvasSize {
   height: number
 }
 
-// Rectangle/circle placement is a click-drag-release gesture (like drawing an arrow), not a
-// single tap — touch-down is one corner/diameter endpoint, release is the other. See
-// useCanvasGestures.ts's 'placeShape' interaction mode and placeShapeFromPoints below.
-export type ShapeToolType = Extract<PlaceableToolType, 'shape-rect' | 'shape-circle'>
+// Rectangle placement is a click-drag-release gesture (like drawing an arrow), not a single
+// tap — touch-down is one corner, release is the opposite one. See useCanvasGestures.ts's
+// 'placeShape' interaction mode and placeShapeFromPoints below. Still its own type rather than
+// the literal, since it names a role ("the tools placed by drag") the call sites read from.
+export type ShapeToolType = Extract<PlaceableToolType, 'shape-rect'>
 
 interface CanvasSnapshot {
   background: CanvasBackground
@@ -181,32 +183,28 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => {
       set({ selectedId: null })
     },
 
-    // p1 is the drag's touch-down point, p2 is its release point. A rectangle's opposite
-    // corners become its center + width/height; a circle's two points become the endpoints of
-    // a diameter. Floors the result at MIN_ZONE_SIZE_PX (screen px, converted to normalized
-    // fractions here) so a very short drag still produces a visible, usable shape.
-    placeShapeFromPoints: (type, p1, p2, canvasSize) => {
+    // p1 is the drag's touch-down point, p2 is its release point, and they are the rectangle's
+    // opposite corners — turned into a center plus width/height here. Floors the result at
+    // MIN_ZONE_SIZE_PX (screen px, converted to normalized fractions here) so a very short drag
+    // still produces a visible, usable shape. `type` is a single-member union today (the circle
+    // left the palette), kept as a parameter so re-adding a drag-placed shape is additive.
+    placeShapeFromPoints: (_type, p1, p2, canvasSize) => {
       const state = get()
       const cx = clamp01((p1.x + p2.x) / 2)
       const cy = clamp01((p1.y + p2.y) / 2)
       const zIndex = nextZIndex(state)
-      const base = { id: randomUUID(), x: cx, y: cy, rotation: 0, scale: 1, zIndex }
 
-      const object: PlacedObject =
-        type === 'shape-rect'
-          ? {
-              ...base,
-              type: 'zone',
-              width: Math.max(MIN_ZONE_SIZE_PX / canvasSize.width, Math.abs(p2.x - p1.x)),
-              height: Math.max(MIN_ZONE_SIZE_PX / canvasSize.height, Math.abs(p2.y - p1.y)),
-            }
-          : {
-              ...base,
-              type: 'circle-zone',
-              radius:
-                Math.max(MIN_ZONE_SIZE_PX / 2, Math.hypot((p2.x - p1.x) * canvasSize.width, (p2.y - p1.y) * canvasSize.height) / 2) /
-                canvasSize.width,
-            }
+      const object: PlacedObject = {
+        id: randomUUID(),
+        x: cx,
+        y: cy,
+        rotation: 0,
+        scale: 1,
+        zIndex,
+        type: 'zone',
+        width: Math.max(MIN_ZONE_SIZE_PX / canvasSize.width, Math.abs(p2.x - p1.x)),
+        height: Math.max(MIN_ZONE_SIZE_PX / canvasSize.height, Math.abs(p2.y - p1.y)),
+      }
 
       commit({ objects: [...state.objects, object] })
       // Disarm back to select mode (the shape just placed is the likely next thing the coach

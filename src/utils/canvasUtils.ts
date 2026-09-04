@@ -97,11 +97,10 @@ export function getMarkerTextColor(fillColor: string | undefined): string {
   return brightness < 128 ? colors.textInverse : colors.canvasInk
 }
 
-// Default footprint for the two Shapes-tool objects, normalized like Zone/Goal's `width`
-// (fraction of canvas width; height fractions are of canvas height).
+// Default footprint for the Zone tool, normalized like Zone/Goal's `width` (fraction of canvas
+// width; the height fraction is of canvas height).
 export const ZONE_DEFAULT_WIDTH = 0.3
 export const ZONE_DEFAULT_HEIGHT = 0.2
-export const CIRCLE_ZONE_DEFAULT_RADIUS = 0.09
 
 // Floor on a zone's live-resized footprint (screen px) so dragging the corner handle past the
 // center can't collapse it to zero/negative size.
@@ -504,7 +503,5 @@ export function createDefaultObject(
       return { ...base, type: 'ball', variant: 'color' }
     case 'shape-rect':
       return { ...base, type: 'zone', width: ZONE_DEFAULT_WIDTH, height: ZONE_DEFAULT_HEIGHT }
-    case 'shape-circle':
-      return { ...base, type: 'circle-zone', radius: CIRCLE_ZONE_DEFAULT_RADIUS }
   }
 }

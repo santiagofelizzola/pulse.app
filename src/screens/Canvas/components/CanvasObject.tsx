@@ -211,7 +211,6 @@ export function CanvasObject({ object, canvasSize, interaction, committed }: Can
 }
 
 interface ShapePlacePreviewProps {
-  type: ShapeToolType
   interaction: SharedValue<InteractionState>
 }
 
@@ -219,7 +218,10 @@ interface ShapePlacePreviewProps {
 // released) — mirrors ArrowDrawPreview's approach (see ArrowPath.tsx): reads live drag points
 // straight off the shared interaction value so this can stay mounted for as long as the tool is
 // armed, resolving to a zero-size (invisible) shape whenever the gesture isn't actively placing.
-export function ShapePlacePreview({ type, interaction }: ShapePlacePreviewProps) {
+//
+// Rectangle only. The circle counterpart went with the circle zone's palette slot; CircleZone
+// objects already on a saved drill still render, through CanvasObject above.
+export function ShapePlacePreview({ interaction }: ShapePlacePreviewProps) {
   const rect = useDerivedValue(() => {
     const live = interaction.value
     if (live.mode !== 'placeShape') return Skia.XYWHRect(0, 0, 0, 0)
@@ -228,22 +230,5 @@ export function ShapePlacePreview({ type, interaction }: ShapePlacePreviewProps)
     return Skia.XYWHRect(x, y, Math.abs(live.drawCurrent.x - live.drawStart.x), Math.abs(live.drawCurrent.y - live.drawStart.y))
   })
 
-  const cx = useDerivedValue(() => {
-    const live = interaction.value
-    return live.mode === 'placeShape' ? (live.drawStart.x + live.drawCurrent.x) / 2 : 0
-  })
-  const cy = useDerivedValue(() => {
-    const live = interaction.value
-    return live.mode === 'placeShape' ? (live.drawStart.y + live.drawCurrent.y) / 2 : 0
-  })
-  const r = useDerivedValue(() => {
-    const live = interaction.value
-    if (live.mode !== 'placeShape') return 0
-    return Math.hypot(live.drawCurrent.x - live.drawStart.x, live.drawCurrent.y - live.drawStart.y) / 2
-  })
-
-  if (type === 'shape-rect') {
-    return <Rect rect={rect} color={colors.canvasInk} style="stroke" strokeWidth={1} />
-  }
-  return <Circle cx={cx} cy={cy} r={r} color={colors.canvasInk} style="stroke" strokeWidth={1} />
+  return <Rect rect={rect} color={colors.canvasInk} style="stroke" strokeWidth={1} />
 }

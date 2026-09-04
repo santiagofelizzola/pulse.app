@@ -57,6 +57,8 @@ export interface Zone extends BaseCanvasObject {
 // Circle counterpart to Zone (rectangle) — a separate per-type interface rather than a
 // 'shape' + variant field, matching the established pattern (see architecture.md's
 // "Equipment objects" decisions-log entry re: per-type interfaces over generic+variant).
+// Removed from the tool palette (see store/canvasStore.ts's PlaceableToolType) but kept here,
+// like Pole/Ladder/Flag/Disc: saved drills contain these and must keep rendering.
 export interface CircleZone extends BaseCanvasObject {
   type: 'circle-zone'
   radius: number
