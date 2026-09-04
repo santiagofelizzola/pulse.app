@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
 import { sessionsUsingActivity } from './sessionRepository'
+import { resolveCanvasBackground } from '../../utils/canvasBackgrounds'
 import { resolveThumbnailUri, thumbnailFilename } from '../../utils/thumbnailUtils'
 import type { Activity, CreateActivityInput, ActivityTag, CanvasData, SessionUsage } from '../../types'
 
@@ -33,6 +34,15 @@ interface ActivityRow {
   updated_at: string
 }
 
+// The stored JSON is trusted for everything except `background`, which is a string union that
+// has lost a member ('middle-third'). Guarded rather than cast, the same rule pitch_style and
+// marker_style follow in lineupRepository: a value the renderer can't resolve falls back instead
+// of failing to draw. Deliberately narrow — this is not a validator for the whole canvas.
+function toCanvasData(raw: string): CanvasData {
+  const parsed = JSON.parse(raw) as CanvasData
+  return { ...parsed, background: resolveCanvasBackground(parsed.background) }
+}
+
 function toActivity(row: ActivityRow): Activity {
   return {
     id: row.id,
@@ -42,7 +52,7 @@ function toActivity(row: ActivityRow): Activity {
     notes: row.notes ?? undefined,
     playerCount: row.player_count ?? undefined,
     playerActions: row.player_actions ?? undefined,
-    canvasData: JSON.parse(row.canvas_data) as CanvasData,
+    canvasData: toCanvasData(row.canvas_data),
     thumbnailUri: row.thumbnail_uri ? resolveThumbnailUri(row.thumbnail_uri) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

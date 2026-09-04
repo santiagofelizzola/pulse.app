@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto'
 
 import { getDatabase } from '../database'
+import { resolveCanvasBackground } from '../../utils/canvasBackgrounds'
 import { DEFAULT_LABEL_DISPLAY, isLabelDisplay } from '../../utils/labelDisplay'
 import { DEFAULT_MARKER_STYLE, isMarkerStyle } from '../../utils/markerStyles'
 import { DEFAULT_PITCH_STYLE, isPitchStyle } from '../../utils/pitchStyles'
@@ -39,7 +40,11 @@ function toLineup(row: LineupRow): Lineup {
     matchDate: row.match_date ?? undefined,
     squadSize: row.squad_size as Lineup['squadSize'],
     formation: row.formation ?? undefined,
-    background: row.background,
+    // Guarded, not cast, like pitch_style/marker_style below. Every lineup this app writes is
+    // 'full-pitch' (create() hardcodes it and there is no picker), so this is belt-and-braces —
+    // but it is the same column type the canvas stores, and CanvasBackground has now lost a
+    // member, so it reads through the same resolver rather than trusting the row.
+    background: resolveCanvasBackground(row.background),
     positions: JSON.parse(row.positions) as LineupPosition[],
     labelDisplay: isLabelDisplay(row.label_display) ? row.label_display : DEFAULT_LABEL_DISPLAY,
     subs: JSON.parse(row.subs) as SubEntry[],

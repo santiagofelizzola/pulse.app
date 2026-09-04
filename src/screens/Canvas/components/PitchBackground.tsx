@@ -69,7 +69,6 @@ export function getPitchAspectRatio(background: CanvasBackground): number {
     case 'half-pitch':
       return PITCH_WIDTH_YD / (PITCH_LENGTH_YD / 2 / HALF_PITCH_FILL_FRAC)
     case 'final-third':
-    case 'middle-third':
       return PITCH_WIDTH_YD / (PITCH_LENGTH_YD / 3 / THIRD_FILL_FRAC)
     case 'penalty-box': {
       // The box's own depth (18yd) is already locked to its width by BOX_DEPTH_TO_WIDTH,
@@ -81,6 +80,11 @@ export function getPitchAspectRatio(background: CanvasBackground): number {
     }
     case 'full-pitch':
     case 'blank':
+    // The two split surfaces are the blank surface with dividers drawn on it, so they take its
+    // frame and its aspect exactly — listed explicitly rather than left to fall through
+    // `default`, so the shared shape is a decision and not an accident.
+    case 'blank-halves':
+    case 'blank-thirds':
     default:
       return canvas.pitchAspectRatio
   }
@@ -125,6 +129,25 @@ function addGoalBox(
 
 function buildPitchPath(background: CanvasBackground, width: number, height: number, margin: number): SkPath | null {
   if (background === 'blank') return null
+
+  // Blank surface, divided into equal horizontal bands: dividers running across the width, bands
+  // stacking top to bottom. Handled before the play-area setup below so these get no touchline
+  // rect and no markings — they are the blank surface plus dividers, nothing else.
+  //
+  // The dividers run the FULL frame width rather than inset by `margin`: `blank` has no inset
+  // play area for them to align to, and a divider that stops short would read as a marking on a
+  // pitch rather than a division of the surface. Same reasoning as the mowing bands below, which
+  // also run the full frame.
+  if (background === 'blank-halves' || background === 'blank-thirds') {
+    const divisions = background === 'blank-halves' ? 2 : 3
+    const dividers = Skia.PathBuilder.Make()
+    for (let i = 1; i < divisions; i += 1) {
+      const y = (height * i) / divisions
+      dividers.moveTo(0, y)
+      dividers.lineTo(width, y)
+    }
+    return dividers.detach()
+  }
 
   const left = margin
   const right = width - margin
@@ -171,12 +194,6 @@ function buildPitchPath(background: CanvasBackground, width: number, height: num
     addGoalBox(builder, cx, top, playWidth, 'down')
   } else if (background === 'final-third') {
     addGoalBox(builder, cx, top, playWidth, 'down')
-  } else if (background === 'middle-third') {
-    const midY = top + playHeight / 2
-    builder.moveTo(left, midY)
-    builder.lineTo(right, midY)
-    builder.addCircle(cx, midY, circleR)
-    builder.addCircle(cx, midY, SPOT_RADIUS)
   } else if (background === 'penalty-box') {
     // Zoomed crop: the box fills most of the frame's width (rather than the pitch-width-relative
     // fraction used elsewhere) with everything else — six-yard box, spot, arc — scaled off of

@@ -1,6 +1,10 @@
+// Stored inside canvas_data JSON (activities) and lineups.background. ADDING a member is safe —
+// only a build that knows a value can ever write it. REMOVING one is not, since stored rows keep
+// the old string, so every read path resolves through utils/canvasBackgrounds.ts's
+// resolveCanvasBackground rather than casting. 'middle-third' was removed that way.
 export type CanvasBackground =
   | 'full-pitch' | 'half-pitch' | 'final-third'
-  | 'middle-third' | 'penalty-box' | 'blank'
+  | 'penalty-box' | 'blank' | 'blank-halves' | 'blank-thirds'
 
 // The pitch SURFACE treatment, orthogonal to CanvasBackground (which picks the crop and the
 // markings drawn on it). Each value maps to a PitchStyleValue in utils/pitchStyles.ts — adding a
