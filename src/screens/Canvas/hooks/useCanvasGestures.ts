@@ -217,42 +217,6 @@ export function useCanvasGestures({
   const beginInteracting = () => setIsInteracting(true)
   const endInteracting = () => setIsInteracting(false)
 
-  // ---------------------------------------------------------------------------------------
-  // TEMPORARY — drag diagnostics, kept for ONE round to confirm the fix on device. Delete this
-  // block and its `// DIAG`-marked call sites afterwards. It writes nothing and changes no
-  // behaviour; it only records what each gesture measured, and prints one line per gesture.
-  //
-  // It was added to answer: why does a short drag move an object and then leave it where it
-  // started? The reading said the three distance gates did not share an origin. onUpdate and
-  // onEnd measured `event.translationX/Y`, which RNGH rebases to zero the moment the recognizer
-  // activates — iOS sets `minDistSq = 0` from `.minDistance(0)`, which makes
-  // `_hasCustomActivationCriteria` true, so the first touchesMoved fires
-  // `setTranslation:CGPointZero` (RNPanHandler.m); Android's `activate()` calls
-  // `resetProgress()`, i.e. `startX = lastX` (PanGestureHandler.kt). onTouchesUp instead
-  // measured from `touchDownPoint`, which is never rebased.
-  //
-  // Measured: the discarded offset ran 1.7-29.1pt (median 10.6) on device, so objects committed
-  // 46-73% of the finger's travel and anything under `8 + offset` of travel did nothing at all.
-  // onUpdate and onEnd now measure from `touchDownPoint` too; these counters stay one more round
-  // so `rebase` can be seen still happening while no longer reaching anything.
-  // ---------------------------------------------------------------------------------------
-  const dbgBeginCount = useSharedValue(0)
-  const dbgMode = useSharedValue('')
-  const dbgFirstUpdateTranslation = useSharedValue(-1)
-  const dbgPeakTranslation = useSharedValue(0)
-  const dbgPeakRaw = useSharedValue(0)
-  const dbgQualified = useSharedValue(false)
-  const dbgTouchesUpRaw = useSharedValue(-1)
-  const dbgTouchesUpSelected = useSharedValue(false)
-  const dbgEndTranslation = useSharedValue(-1)
-  const dbgEndRaw = useSharedValue(-1)
-  const dbgEndBranch = useSharedValue('none')
-
-  const logGesture = (line: string) => {
-    // eslint-disable-next-line no-console
-    console.log(line)
-  }
-
   // Set (with the committing gesture's `seq`) right before the store mutation that will make
   // the commit's final position show up in `objects`/`arrows` props — see the effect below,
   // which is what actually clears `interaction` once that prop update lands.
@@ -303,19 +267,6 @@ export function useCanvasGestures({
     .onBegin((event) => {
       touchDownPoint.value = { x: event.x, y: event.y }
       dragQualified.value = false
-
-      // DIAG — counted, not reset, so two onBegins inside one physical touch show up as
-      // begins=2 on a single log line (the standing hypothesis for the deselect-also-places bug).
-      dbgBeginCount.value += 1
-      dbgFirstUpdateTranslation.value = -1
-      dbgPeakTranslation.value = 0
-      dbgPeakRaw.value = 0
-      dbgQualified.value = false
-      dbgTouchesUpRaw.value = -1
-      dbgTouchesUpSelected.value = false
-      dbgEndTranslation.value = -1
-      dbgEndRaw.value = -1
-      dbgEndBranch.value = 'none'
 
       // Every gesture lifecycle gets its own seq so a commit's deferred interaction-clear (see
       // the useEffect above) can tell "the commit I'm waiting on landed" apart from "a new
@@ -450,17 +401,6 @@ export function useCanvasGestures({
       }
     })
     .onUpdate((event) => {
-      // DIAG — recorded before the slop gate below, so a gesture that never qualifies is still
-      // measured. `beginToFirstUpdate` is the activation rebase: raw travel already spent by the
-      // time translation restarted at zero.
-      {
-        const translation = Math.hypot(event.translationX, event.translationY)
-        const raw = Math.hypot(event.x - touchDownPoint.value.x, event.y - touchDownPoint.value.y)
-        if (dbgFirstUpdateTranslation.value < 0) dbgFirstUpdateTranslation.value = raw - translation
-        if (translation > dbgPeakTranslation.value) dbgPeakTranslation.value = translation
-        if (raw > dbgPeakRaw.value) dbgPeakRaw.value = raw
-      }
-
       // The drag delta is measured from `touchDownPoint`, NOT from event.translationX/Y.
       //
       // This is the whole fix for the short-drag snap-back, and it is not a micro-optimisation:
@@ -489,7 +429,6 @@ export function useCanvasGestures({
       if (!dragQualified.value) {
         if (Math.hypot(rawDx, rawDy) < TAP_SLOP) return
         dragQualified.value = true
-        dbgQualified.value = true // DIAG — true means the object actually painted under the finger
       }
 
       const current = interaction.value
@@ -515,16 +454,11 @@ export function useCanvasGestures({
       // lifting — reads as a tap here, gets reset to idle, and snaps the object back from wherever
       // it was painted. See dragQualified's own note above.
       const current = interaction.value
-      // DIAG — recorded for every touch lift, including the ones that return early below, so a
-      // gesture that reached neither the select branch nor a commit is still visible in the log.
-      dbgMode.value = current.mode
       if (current.mode !== 'move' || !current.targetId) return
       const touch = event.changedTouches[0]
       if (!touch) return
       const travel = Math.hypot(touch.x - touchDownPoint.value.x, touch.y - touchDownPoint.value.y)
-      dbgTouchesUpRaw.value = travel // DIAG
       if (!dragQualified.value && travel < TAP_SLOP) {
-        dbgTouchesUpSelected.value = true // DIAG
         interaction.value = IDLE_STATE
         runOnJS(onSelect)(current.targetId)
         runOnJS(endInteracting)()
@@ -542,13 +476,6 @@ export function useCanvasGestures({
       // a drag or a tap" but "is this arrow long enough to be worth creating" — so it stays a
       // measurement of the finished gesture rather than a latch.
       const travel = Math.hypot(rawDx, rawDy)
-      // DIAG — endRaw is now what gates and commits the drag; endTrans is the rebased translation
-      // that USED to, kept alongside it purely so the shortfall between them stays visible. Before
-      // the fix these two diverged by the whole rebase (endRaw 39.7 committing only 18.8); after
-      // it, the object should land on endRaw and the shortfall should read as whatever endTrans
-      // still lags by — a number that no longer reaches the store.
-      dbgEndTranslation.value = Math.hypot(event.translationX, event.translationY)
-      dbgEndRaw.value = travel
       // Set true for move/rotate commits — those leave `interaction` frozen at its
       // final value instead of resetting here, so the render keeps showing the live (correct)
       // position until the committed objects/arrows props land and the effect above clears it.
@@ -564,7 +491,6 @@ export function useCanvasGestures({
       // lifting still commits, at whatever point the finger actually left it. The two callbacks
       // therefore partition the whole range with nothing between them and no way to disagree.
       if (current.mode === 'move' && current.targetId && dragQualified.value) {
-        dbgEndBranch.value = 'commitMove' // DIAG
         if (current.targetKind === 'object' && canvasSize.width > 0 && canvasSize.height > 0) {
           const finalX = (startObjectPoint.value.x + rawDx) / canvasSize.width
           const finalY = (startObjectPoint.value.y + rawDy) / canvasSize.height
@@ -577,7 +503,6 @@ export function useCanvasGestures({
       } else if (current.mode === 'rotate' && current.targetId && dragQualified.value) {
         // Same verdict as the move commit above — a rotation that swings out and back still
         // committed a rotation, and the handle's final angle is the one the coach chose.
-        dbgEndBranch.value = 'commitRotate' // DIAG
         runOnJS(commitRotate)(current.seq, current.targetId, current.rotation)
         deferClear = true
       } else if (current.mode === 'drawArrow' && current.drawType) {
@@ -604,35 +529,6 @@ export function useCanvasGestures({
       }
     })
     .onFinalize((_event, success) => {
-      // DIAG — one line per gesture, printed here because onFinalize is the only callback that
-      // fires for every outcome (committed, cancelled, or never activated at all).
-      //
-      // Reading it, now that the drag measures from touch-down:
-      //   rebase              still reported, and still 1-30pt — RNGH keeps discarding it. It no
-      //                       longer reaches anything: nothing gates or commits on translation.
-      //   endRaw              what the finger actually travelled, and what the object now moves
-      //   endTrans            the old rebased number, kept only so the gap stays visible.
-      //                       endRaw - endTrans should still be roughly `rebase`.
-      //   painted=true        expected on every gesture whose endRaw >= 8, and on any that
-      //                       reached 8 at some point (peakRaw >= 8) even if it came back
-      //   branch=commitMove   expected on EVERY painted=true line now, whatever endRaw ended at
-      //   sel=true            expected only on painted=false lines — a gesture that never
-      //                       qualified. painted=true with sel=true is the out-and-back snap-back
-      //                       and should no longer occur at all.
-      //   ok=false            normal for a stationary tap (the pan never activates, onEnd never
-      //                       fires); on a moving gesture it would mean a cancellation
-      //   begins > 1          two onBegins inside one physical touch — none seen so far
-      runOnJS(logGesture)(
-        `[drag] begins=${dbgBeginCount.value} mode=${dbgMode.value}` +
-          ` rebase=${dbgFirstUpdateTranslation.value.toFixed(1)}` +
-          ` peakTrans=${dbgPeakTranslation.value.toFixed(1)} peakRaw=${dbgPeakRaw.value.toFixed(1)}` +
-          ` painted=${dbgQualified.value}` +
-          ` upRaw=${dbgTouchesUpRaw.value.toFixed(1)} sel=${dbgTouchesUpSelected.value}` +
-          ` endTrans=${dbgEndTranslation.value.toFixed(1)} endRaw=${dbgEndRaw.value.toFixed(1)}` +
-          ` branch=${dbgEndBranch.value} ok=${success} slop=${TAP_SLOP}`
-      )
-      dbgBeginCount.value = 0
-
       if (!success) {
         interaction.value = IDLE_STATE
         runOnJS(endInteracting)()
