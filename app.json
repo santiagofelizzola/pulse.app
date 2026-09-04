@@ -9,6 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.santiago.pulse",
+      "buildNumber": "2",
       "infoPlist": {
         "NSPhotoLibraryAddUsageDescription": "Pulse saves exported drills and lineups to your photo library when you choose Save Image.",
         "ITSAppUsesNonExemptEncryption": false
